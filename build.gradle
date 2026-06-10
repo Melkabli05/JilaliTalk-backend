@@ -1,0 +1,54 @@
+plugins {
+    id 'io.micronaut.application' version '4.5.4'
+    id 'com.gradleup.shadow' version '8.3.9'
+}
+
+version = '0.1'
+group = 'com.jilali'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    annotationProcessor 'io.micronaut:micronaut-http-validation'
+    annotationProcessor 'io.micronaut.serde:micronaut-serde-processor'
+    annotationProcessor 'io.micronaut.validation:micronaut-validation-processor'
+    annotationProcessor 'io.micronaut.openapi:micronaut-openapi'
+
+    implementation 'io.micronaut:micronaut-http-server-netty'
+    implementation 'io.micronaut:micronaut-http-client'
+    implementation 'io.micronaut:micronaut-websocket'
+    implementation 'io.micronaut.serde:micronaut-serde-jackson'
+    implementation 'io.micronaut.validation:micronaut-validation'
+    implementation 'io.micronaut.openapi:micronaut-openapi'
+
+    runtimeOnly 'ch.qos.logback:logback-classic'
+    runtimeOnly 'org.yaml:snakeyaml'
+
+    testImplementation 'io.micronaut:micronaut-http-client'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params'
+}
+
+application {
+    mainClass = 'com.jilali.Application'
+}
+
+tasks.named('jar') {
+    duplicatesStrategy = DuplicatesStrategy.WARN
+}
+
+java {
+    sourceCompatibility = JavaVersion.toVersion('25')
+    targetCompatibility = JavaVersion.toVersion('25')
+}
+
+micronaut {
+    runtime 'netty'
+    testRuntime 'junit5'
+    processing {
+        incremental true
+        annotations 'com.jilali.*'
+    }
+}
+

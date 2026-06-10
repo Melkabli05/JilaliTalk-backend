@@ -1,0 +1,1738 @@
+openapi: 3.0.1
+info:
+  title: jilalibff
+  version: 1.0.0
+paths:
+  /api/captions/history:
+    get:
+      operationId: history
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          minLength: 1
+          type: string
+      - name: pageSize
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          description: history 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptionHistoryResponse"
+  /api/captions/switch:
+    post:
+      operationId: switchCaption
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaptionSwitchRequest"
+        required: true
+      responses:
+        "200":
+          description: switchCaption 200 response
+  /api/comments:
+    get:
+      operationId: comments
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          description: comments 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentListResponse"
+  /api/comments/notify:
+    get:
+      operationId: commentNotify
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      responses:
+        "200":
+          description: commentNotify 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentNotifyResponse"
+  /api/managers:
+    get:
+      operationId: list
+      parameters:
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          minLength: 1
+          type: string
+      - name: host_id
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: list 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagerListResponse"
+    post:
+      operationId: set
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetManagerRequest"
+        required: true
+      responses:
+        "200":
+          description: set 200 response
+  /api/managers/approve:
+    post:
+      operationId: approve
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveManagerRequest"
+        required: true
+      responses:
+        "200":
+          description: approve 200 response
+  /api/managers/judge:
+    get:
+      operationId: judge
+      parameters:
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          minLength: 1
+          type: string
+      - name: host_id
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: judge 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagerJudgeResponse"
+  /api/rooms/active:
+    get:
+      operationId: userStartedChannel
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      responses:
+        "200":
+          description: userStartedChannel 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/rooms/batch-query:
+    post:
+      operationId: batchQuery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchQueryRequest"
+        required: true
+      responses:
+        "200":
+          description: batchQuery 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchQueryResponse"
+  /api/rooms/categories:
+    get:
+      operationId: categories
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      responses:
+        "200":
+          description: categories 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryTopicListResponse"
+  /api/rooms/config:
+    get:
+      operationId: liveVoiceConfig
+      responses:
+        "200":
+          description: liveVoiceConfig 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/rooms/end:
+    post:
+      operationId: endChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndChannelRequest"
+        required: true
+      responses:
+        "200":
+          description: endChannel 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/rooms/language-groups/live:
+    get:
+      operationId: languageGroupsLive
+      responses:
+        "200":
+          description: languageGroupsLive 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LanguageGroup"
+  /api/rooms/language-groups/voice:
+    get:
+      operationId: languageGroupsVoice
+      parameters:
+      - name: scene
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+          default: create
+      responses:
+        "200":
+          description: languageGroupsVoice 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LanguageGroup"
+  /api/rooms/latest-settings:
+    get:
+      operationId: userLatestChannel
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      responses:
+        "200":
+          description: userLatestChannel 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/rooms/live:
+    get:
+      operationId: listLiveRooms
+      parameters:
+      - name: langId
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: limit
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      - name: offset
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: refresh
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      responses:
+        "200":
+          description: listLiveRooms 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelListResponse"
+  /api/rooms/live/recommend:
+    get:
+      operationId: recommendLiveRooms
+      parameters:
+      - name: scene
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+          default: moment_tab
+      responses:
+        "200":
+          description: recommendLiveRooms 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelListResponse"
+  /api/rooms/live/{cname}:
+    get:
+      operationId: liveRoomInfo
+      parameters:
+      - name: cname
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: liveRoomInfo 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/rooms/voice:
+    get:
+      operationId: listVoiceRooms
+      parameters:
+      - name: langId
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: limit
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      - name: offset
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: refresh
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      responses:
+        "200":
+          description: listVoiceRooms 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelListResponse"
+    post:
+      operationId: createVoiceChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVoiceChannelRequest"
+        required: true
+      responses:
+        "200":
+          description: createVoiceChannel 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVoiceChannelResponse"
+  /api/rooms/voice/recommend:
+    get:
+      operationId: recommendVoiceRooms
+      parameters:
+      - name: exclude_cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+      - name: scene
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+          default: in_room
+      responses:
+        "200":
+          description: recommendVoiceRooms 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelListResponse"
+  /api/rooms/voice/recommend-single:
+    get:
+      operationId: recommendSingleVoiceRoom
+      parameters:
+      - name: langId
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      responses:
+        "200":
+          description: recommendSingleVoiceRoom 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelListItem"
+  /api/rooms/voice/update:
+    post:
+      operationId: updateVoiceChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVoiceChannelRequest"
+        required: true
+      responses:
+        "200":
+          description: updateVoiceChannel 200 response
+  /api/rooms/voice/{cname}:
+    get:
+      operationId: voiceRoomInfo
+      parameters:
+      - name: cname
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: voiceRoomInfo 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/rooms/{cname}/basic:
+    get:
+      operationId: channelBasicInfo
+      parameters:
+      - name: cname
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: channelBasicInfo 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/stage/device-control:
+    post:
+      operationId: deviceControl
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceControlRequest"
+        required: true
+      responses:
+        "200":
+          description: deviceControl 200 response
+  /api/stage/invite:
+    post:
+      operationId: invite
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StageInviteRequest"
+        required: true
+      responses:
+        "200":
+          description: invite 200 response
+  /api/stage/invite/approval:
+    post:
+      operationId: inviteApproval
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StageInviteApprovalRequest"
+        required: true
+      responses:
+        "200":
+          description: inviteApproval 200 response
+  /api/stage/join:
+    post:
+      operationId: join
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StageActionRequest"
+        required: true
+      responses:
+        "200":
+          description: join 200 response
+  /api/stage/kick:
+    post:
+      operationId: kick
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KickRequest"
+        required: true
+      responses:
+        "200":
+          description: kick 200 response
+  /api/stage/list:
+    get:
+      operationId: list_1
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          description: list_1 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StageListResponse"
+  /api/stage/quit:
+    post:
+      operationId: quit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StageActionRequest"
+        required: true
+      responses:
+        "200":
+          description: quit 200 response
+  /api/stage/raise-hand:
+    post:
+      operationId: raiseHand
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RaiseHandRequest"
+        required: true
+      responses:
+        "200":
+          description: raiseHand 200 response
+  /api/stage/raise-hand/approval:
+    post:
+      operationId: raiseHandApproval
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RaiseHandApprovalRequest"
+        required: true
+      responses:
+        "200":
+          description: raiseHandApproval 200 response
+  /api/users/end-page/audience:
+    get:
+      operationId: endPageAudience
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: endPageAudience 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/users/end-page/host:
+    get:
+      operationId: endPageHost
+      parameters:
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+      - name: contributeListType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+          default: topn
+      responses:
+        "200":
+          description: endPageHost 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/users/heartbeat:
+    post:
+      operationId: heartbeat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeartbeatRequest"
+        required: true
+      responses:
+        "200":
+          description: heartbeat 200 response
+  /api/users/host-status:
+    get:
+      operationId: hostStatus
+      responses:
+        "200":
+          description: hostStatus 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostStatus"
+  /api/users/record/live:
+    get:
+      operationId: recordLive
+      parameters:
+      - name: limit
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 8
+      - name: offset
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      responses:
+        "200":
+          description: recordLive 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+  /api/users/rooms/list:
+    post:
+      operationId: roomUsers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomUserListRequest"
+        required: true
+      responses:
+        "200":
+          description: roomUsers 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomUserListResponse"
+  /api/users/rooms/{cname}/join:
+    post:
+      operationId: join_1
+      parameters:
+      - name: cname
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      responses:
+        "200":
+          description: join_1 200 response
+  /api/users/rooms/{cname}/quit:
+    post:
+      operationId: quit_1
+      parameters:
+      - name: cname
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      responses:
+        "200":
+          description: quit_1 200 response
+  /api/users/status/batch:
+    post:
+      operationId: batchStatus
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchStatusRequest"
+        required: true
+      responses:
+        "200":
+          description: batchStatus 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchStatusResponse"
+  /api/users/{userId}/profile:
+    get:
+      operationId: profile
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: cname
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: string
+      - name: busiType
+        in: query
+        required: true
+        explode: false
+        schema:
+          type: integer
+          format: int32
+          default: 2
+      responses:
+        "200":
+          description: profile 200 response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+  /api/users/{userId}/status:
+    get:
+      operationId: status
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: status 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStatus"
+components:
+  schemas:
+    ApproveManagerRequest:
+      required:
+      - cname
+      - host_id
+      - operation_type
+      type: object
+      properties:
+        operation_type:
+          minLength: 1
+          type: string
+        cname:
+          minLength: 1
+          type: string
+        host_id:
+          type: integer
+          format: int64
+    BatchChannelStatus:
+      required:
+      - cname
+      - room_status
+      type: object
+      properties:
+        cname:
+          type: string
+        room_status:
+          type: integer
+          format: int32
+        ended_at:
+          type: integer
+          format: int64
+          nullable: true
+    BatchQueryRequest:
+      required:
+      - cnames
+      type: object
+      properties:
+        cnames:
+          minItems: 1
+          type: array
+          items:
+            type: string
+    BatchQueryResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/BatchChannelStatus"
+    BatchStatusRequest:
+      required:
+      - user_ids
+      type: object
+      properties:
+        user_ids:
+          minItems: 1
+          type: array
+          items:
+            type: integer
+            format: int64
+    BatchStatusResponse:
+      type: object
+      properties:
+        others:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/UserOnlineStatus"
+        list:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/UserOnlineStatus"
+    CaptionEntry:
+      required:
+      - _id
+      - create_at
+      - nick_name
+      - text
+      - user_id
+      type: object
+      properties:
+        _id:
+          type: string
+        user_id:
+          type: integer
+          format: int64
+        nick_name:
+          type: string
+        nationality:
+          type: string
+          nullable: true
+        text:
+          type: string
+        create_at:
+          type: integer
+          format: int64
+    CaptionHistoryResponse:
+      required:
+      - has_more
+      type: object
+      properties:
+        list:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/CaptionEntry"
+        has_more:
+          type: boolean
+    CaptionSwitchRequest:
+      required:
+      - busi_type
+      - caption_status
+      - cname
+      - is_try_out
+      type: object
+      properties:
+        busi_type:
+          type: integer
+          format: int32
+        cname:
+          minLength: 1
+          type: string
+        caption_status:
+          type: integer
+          format: int32
+        is_try_out:
+          type: boolean
+    Category:
+      required:
+      - id
+      - name
+      type: object
+      properties:
+        topics:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/Topic"
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        bg_color:
+          type: string
+          nullable: true
+        font_color:
+          type: string
+          nullable: true
+    CategoryTopicListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/Category"
+    CategoryTopicTag:
+      required:
+      - category_id
+      - category_name
+      type: object
+      properties:
+        category_id:
+          type: integer
+          format: int64
+        category_name:
+          type: string
+        topic_id:
+          type: integer
+          format: int64
+          nullable: true
+        topic_name:
+          type: string
+          nullable: true
+        bg_color:
+          type: string
+          nullable: true
+        font_color:
+          type: string
+          nullable: true
+    Channel:
+      required:
+      - busi_type
+      - cname
+      - lang_id
+      - name
+      - room_status
+      - total_user_count
+      type: object
+      properties:
+        cname:
+          type: string
+        busi_type:
+          type: integer
+          format: int32
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        lang_id:
+          type: integer
+          format: int32
+        langs:
+          type: array
+          nullable: true
+          items:
+            type: integer
+            format: int32
+        room_status:
+          type: integer
+          format: int32
+        total_user_count:
+          type: integer
+          format: int32
+        heat_value:
+          type: integer
+          format: int32
+          nullable: true
+    ChannelListItem:
+      required:
+      - channel
+      - host_user
+      type: object
+      properties:
+        channel:
+          $ref: "#/components/schemas/Channel"
+        host_user:
+          $ref: "#/components/schemas/HostUser"
+        users:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/RoomUser"
+        token:
+          type: string
+          nullable: true
+        background_url:
+          type: string
+          nullable: true
+        category_topic_tag:
+          nullable: true
+          allOf:
+          - $ref: "#/components/schemas/CategoryTopicTag"
+      description: "Room listing item shared across discovery endpoints (channel_list,\
+        \ recommend, end-page). Fields are limited to what a frontend actually renders;\
+        \ we deliberately do not transcribe every upstream field, since modeling unused\
+        \ data is just a different kind of bloat."
+    ChannelListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ChannelListItem"
+      description: "Wrapper for the {items:\\[...\\]} listing payloads."
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        user_id:
+          type: integer
+          format: int64
+          nullable: true
+        content:
+          type: string
+          nullable: true
+      description: "Room comment item. The upstream payload is loosely specified (items\
+        \ may be null), so we model the stable identifying fields and leave the rest\
+        \ to be added when the frontend needs them."
+    CommentListResponse:
+      required:
+      - has_next
+      type: object
+      properties:
+        items:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/Comment"
+        has_next:
+          type: boolean
+        oldest_id:
+          type: string
+          nullable: true
+    CommentNotify:
+      required:
+      - id
+      - notify_type
+      type: object
+      properties:
+        notify_content:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/CommentNotifyContent"
+        id:
+          type: integer
+          format: int64
+        notify_type:
+          type: integer
+          format: int32
+        label:
+          type: string
+          nullable: true
+        text_color:
+          type: string
+          nullable: true
+        background_color:
+          type: string
+          nullable: true
+    CommentNotifyContent:
+      required:
+      - icon_type
+      - level
+      type: object
+      properties:
+        content:
+          type: string
+          nullable: true
+        icon_type:
+          type: integer
+          format: int32
+        link_url:
+          type: string
+          nullable: true
+        level:
+          type: integer
+          format: int32
+    CommentNotifyResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/CommentNotify"
+    CreateVoiceChannelRequest:
+      required:
+      - lang_id
+      - name
+      - visible_status
+      type: object
+      properties:
+        visible_status:
+          type: integer
+          format: int32
+        name:
+          minLength: 1
+          type: string
+        lang_id:
+          minimum: 0
+          exclusiveMinimum: true
+          type: integer
+          format: int32
+        category_id_v2:
+          type: integer
+          format: int64
+          nullable: true
+        topic_id_v2:
+          type: integer
+          format: int64
+          nullable: true
+        notice:
+          type: string
+          nullable: true
+        game_type:
+          type: integer
+          format: int32
+          nullable: true
+      description: "Inbound body for room creation. Validation annotations are enforced\
+        \ by Micronaut at the controller boundary (compile-time validation processor),\
+        \ so invalid input never reaches the upstream call."
+    CreateVoiceChannelResponse:
+      required:
+      - cname
+      - rtc_engine
+      - token
+      type: object
+      properties:
+        cname:
+          type: string
+        token:
+          type: string
+        rtc_engine:
+          type: integer
+          format: int32
+    DeviceControlRequest:
+      required:
+      - busi_type
+      - cname
+      - device_type
+      - switch_type
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        switch_type:
+          type: integer
+          format: int32
+        busi_type:
+          type: integer
+          format: int32
+        device_type:
+          type: integer
+          format: int32
+    EndChannelRequest:
+      required:
+      - cname
+      - ended_type
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        ended_type:
+          type: integer
+          format: int32
+    HeartbeatRequest:
+      required:
+      - busi_type
+      - cname
+      - host_id
+      - is_fg_member
+      type: object
+      properties:
+        host_id:
+          type: integer
+          format: int64
+        is_fg_member:
+          type: boolean
+        busi_type:
+          type: integer
+          format: int32
+        cname:
+          minLength: 1
+          type: string
+    HostStatus:
+      required:
+      - is_banned_live
+      - is_banned_voice_room
+      - is_live_host
+      - is_minor
+      - is_voice_room_host
+      type: object
+      properties:
+        is_live_host:
+          type: boolean
+        is_voice_room_host:
+          type: boolean
+        is_banned_live:
+          type: boolean
+        is_banned_voice_room:
+          type: boolean
+        is_minor:
+          type: boolean
+    HostUser:
+      required:
+      - nickname
+      - user_id
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+        nickname:
+          type: string
+        head_url:
+          type: string
+          nullable: true
+        nationality:
+          type: string
+          nullable: true
+    KickRequest:
+      required:
+      - busi_type
+      - cname
+      - user_id
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        user_id:
+          minimum: 0
+          exclusiveMinimum: true
+          type: integer
+          format: int64
+        busi_type:
+          type: integer
+          format: int32
+    LanguageGroup:
+      required:
+      - lang_id
+      - langs_len
+      type: object
+      properties:
+        lang_id:
+          type: integer
+          format: int32
+        langs:
+          type: array
+          nullable: true
+          items:
+            type: integer
+            format: int32
+        langs_len:
+          type: integer
+          format: int32
+      description: "Element of the bare-array payload from language_group/{voice,live}."
+    Manager:
+      required:
+      - is_in_room
+      - nickname
+      - role
+      - user_id
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+        nickname:
+          type: string
+        head_url:
+          type: string
+          nullable: true
+        nationality:
+          type: string
+          nullable: true
+        role:
+          type: integer
+          format: int32
+        is_in_room:
+          type: boolean
+        stay_time:
+          type: integer
+          format: int64
+          nullable: true
+    ManagerJudgeResponse:
+      required:
+      - is_online
+      type: object
+      properties:
+        is_online:
+          type: boolean
+    ManagerListResponse:
+      type: object
+      properties:
+        manager_list:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/Manager"
+    RaiseHandApprovalRequest:
+      required:
+      - approval_type
+      - busi_type
+      - cname
+      - user_id
+      type: object
+      properties:
+        busi_type:
+          type: integer
+          format: int32
+        user_id:
+          minimum: 0
+          exclusiveMinimum: true
+          type: integer
+          format: int64
+        approval_type:
+          type: integer
+          format: int32
+        cname:
+          minLength: 1
+          type: string
+    RaiseHandRequest:
+      required:
+      - busi_type
+      - cname
+      - raisehand_type
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        raisehand_type:
+          type: integer
+          format: int32
+        busi_type:
+          type: integer
+          format: int32
+    RoomUser:
+      required:
+      - is_in_room
+      - is_on_mic
+      - nickname
+      - role
+      - user_id
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+        nickname:
+          type: string
+        head_url:
+          type: string
+          nullable: true
+        nationality:
+          type: string
+          nullable: true
+        is_in_room:
+          type: boolean
+        is_on_mic:
+          type: boolean
+        role:
+          type: integer
+          format: int32
+    RoomUserListRequest:
+      required:
+      - busi_type
+      - cname
+      type: object
+      properties:
+        get_type:
+          type: array
+          nullable: true
+          items:
+            type: integer
+            format: int32
+        cname:
+          minLength: 1
+          type: string
+        busi_type:
+          type: integer
+          format: int32
+    RoomUserListResponse:
+      required:
+      - audience_total
+      type: object
+      properties:
+        list:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/RoomUser"
+        audience_total:
+          type: integer
+          format: int32
+    SetManagerRequest:
+      required:
+      - action
+      - busi_type
+      - cname
+      - user_id
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        action:
+          type: integer
+          format: int32
+        user_id:
+          minimum: 0
+          exclusiveMinimum: true
+          type: integer
+          format: int64
+        busi_type:
+          type: integer
+          format: int32
+    StageActionRequest:
+      required:
+      - busi_type
+      - cname
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        busi_type:
+          type: integer
+          format: int32
+    StageInviteApprovalRequest:
+      required:
+      - approval_type
+      - busi_type
+      - cname
+      - invite_type
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        busi_type:
+          type: integer
+          format: int32
+        invite_type:
+          type: integer
+          format: int32
+        approval_type:
+          type: integer
+          format: int32
+    StageInviteRequest:
+      required:
+      - busi_type
+      - cname
+      - invite_type
+      - user_id
+      type: object
+      properties:
+        invite_type:
+          type: integer
+          format: int32
+        user_id:
+          minimum: 0
+          exclusiveMinimum: true
+          type: integer
+          format: int64
+        cname:
+          minLength: 1
+          type: string
+        busi_type:
+          type: integer
+          format: int32
+    StageListResponse:
+      required:
+      - is_host_in_room
+      type: object
+      properties:
+        list:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/StageMember"
+        is_host_in_room:
+          type: boolean
+    StageMember:
+      required:
+      - is_turn_on_cam
+      - is_turn_on_mic
+      - nickname
+      - role
+      - user_id
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+        nickname:
+          type: string
+        head_url:
+          type: string
+          nullable: true
+        nationality:
+          type: string
+          nullable: true
+        role:
+          type: integer
+          format: int32
+        is_turn_on_mic:
+          type: boolean
+        is_turn_on_cam:
+          type: boolean
+    Topic:
+      required:
+      - category_id
+      - id
+      - name
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        category_id:
+          type: integer
+          format: int64
+    UpdateVoiceChannelRequest:
+      required:
+      - cname
+      type: object
+      properties:
+        cname:
+          minLength: 1
+          type: string
+        manager_uids:
+          type: array
+          nullable: true
+          items:
+            type: integer
+            format: int64
+        types:
+          type: array
+          nullable: true
+          items:
+            type: integer
+            format: int32
+    UserOnlineStatus:
+      required:
+      - online
+      - user_id
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+        gift_level:
+          type: integer
+          format: int32
+          nullable: true
+        online:
+          type: boolean
+    UserStatus:
+      required:
+      - blackened
+      - user_id
+      - user_status_type
+      type: object
+      properties:
+        user_status_type:
+          type: integer
+          format: int32
+        user_id:
+          type: integer
+          format: int64
+        room_name:
+          type: string
+          nullable: true
+        cname:
+          type: string
+          nullable: true
+        gift_level:
+          type: integer
+          format: int32
+          nullable: true
+        blackened:
+          type: boolean

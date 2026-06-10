@@ -1,0 +1,89 @@
+micronaut:
+  application:
+    name: jilalibff
+  server:
+    port: 8080
+    cors:
+      enabled: true
+      configurations:
+        all:
+          allowed-origins:
+            - http://localhost:4200
+            - http://localhost:4201
+          allowed-methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          allowed-headers:
+            - Content-Type
+            - Authorization
+            - X-Requested-With
+            - Accept
+            - Origin
+            - Access-Control-Request-Method
+            - Access-Control-Request-Headers
+          exposed-headers:
+            - Access-Control-Allow-Origin
+            - Access-Control-Allow-Credentials
+          allow-credentials: true
+          max-age: 3600
+  router:
+    static-resources:
+      swagger:
+        paths: classpath:META-INF/swagger
+        mapping: /swagger/**
+      swagger-ui:
+        paths: classpath:META-INF/swagger/views/swagger-ui
+        mapping: /swagger-ui/**
+  executors:
+    blocking:
+      virtual: true
+  http:
+    services:
+      jlhub:
+        url: ${LIVEHUB_BASE_URL:`https://api-global.hellotalk8.com`}
+        read-timeout: 10s
+        connect-timeout: 5s
+  openapi:
+    views:
+      spec: swagger-ui.enabled=true
+
+endpoints:
+  all:
+    enabled: true
+    sensitive: false
+
+# Application-specific knobs, bound via @ConfigurationProperties (JilaliProperties).
+jilali:
+  # Auth token used when the frontend sends no authorization header.
+  # Set LIVEHUB_AUTH_TOKEN environment variable in production.
+  default-auth-token: ${LIVEHUB_AUTH_TOKEN:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODI4MjYxMjIsInNyYyI6MiwidWlkIjoxNjkzMzU1NjJ9.e6113WK16hphjmpXjnNo_h8pFGECqFVk6HOXKvD6G8U}
+  # Inbound headers we forward verbatim to the upstream on every call.
+  forwarded-headers:
+    - authorization
+    - x-ht-token
+    - x-ht-uid
+    - x-ht-version
+    - x-ht-os
+    - x-ht-device
+    - x-ht-lang
+    - x-ht-channel
+    - x-ht-did
+    - x-ht-build
+    - x-ht-timezone
+    - x-ht-tzid
+    - x-ht-os-version
+    - x-ht-ui-mode
+    - x-b3-traceid
+    - x-b3-spanid
+    - x-b3-sampled
+    - x-request-start
+    - user-agent
+    - accept-language
+
+jackson:
+  serialization:
+    writeDatesAsTimestamps: true
+
