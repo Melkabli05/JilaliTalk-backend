@@ -1,6 +1,8 @@
 package com.jilali.client;
 
 import com.jilali.core.JilaliEnvelope;
+import com.jilali.core.JilaliException;
+import com.jilali.core.JilaliProperties;
 import com.jilali.room.dto.ChannelListResponse;
 import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
@@ -9,6 +11,16 @@ import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.signin.dto.ClaimRewardRequest;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
+import com.jilali.user.dto.UserInfo;
+import com.jilali.user.dto.UserInfoRequest;
+import com.jilali.user.dto.UserInfoResponse;
+import com.jilali.crypto.Curve25519SessionGenerator;
+import com.jilali.crypto.EncbinUtil;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,9 +40,13 @@ public class JilaliGateway {
 
     private static final Logger log = LoggerFactory.getLogger(JilaliGateway.class);
     private final JilaliClient client;
+    private final HttpClient httpClient;
+    private final JilaliProperties properties;
 
-    public JilaliGateway(JilaliClient client) {
+    public JilaliGateway(JilaliClient client, @Client HttpClient httpClient, JilaliProperties properties) {
         this.client = client;
+        this.httpClient = httpClient;
+        this.properties = properties;
     }
 
     // Bare payloads pass straight through.
@@ -251,5 +267,58 @@ public class JilaliGateway {
 
     public byte[] userProfile(int busiType, String cname, long userId) {
         return client.userProfile(busiType, cname, userId);
+    }
+
+    /**
+     * Fetches HelloTalk user info via the encrypted ht/encbin endpoint.
+     * Uses a direct HTTP call to set per-request ht/encbin headers correctly.
+     *
+     * @param userId the HelloTalk user ID to look up
+     * @return clean UserInfo record
+     */
+    public UserInfo userInfo(long userId) {
+        var session = Curve25519SessionGenerator.generate();
+        var request = UserInfoRequest.forUser(userId);
+        byte[] encryptedPayload = EncbinUtil.encrypt(request, session.sharedSecret());
+
+        String upstreamUrl = properties.defaultAuthToken().isEmpty()
+            ? "https://api-global.hellotalk8.com"
+            : "https://api-global.hellotalk8.com";
+
+        String token = properties.defaultAuthToken();
+        String fixDid = "4050e6f3ca1a3029ba21a01f4e3f13ba";
+
+        HttpRequest<byte[]> httpRequest = HttpRequest.POST(
+                upstreamUrl + "/livehub/profile/v2/userinfo", encryptedPayload)
+            .header("ht-content-type", "ht/encbin")
+            .header("accept-charset", "UTF-8,*;q=0.5")
+            .header("x-ht-did", fixDid)
+            .header("user-agent", "android;6.1.0;SM-A908N;11;" + userId)
+            .header("x-ht-ui-mode", "1")
+            .header("x-request-start", String.valueOf(System.currentTimeMillis()))
+            .header("x-ht-channel", "google")
+            .header("authorization", "Bearer " + token)
+            .header("x-ht-build", "135")
+            .header("x-ht-uid", String.valueOf(userId))
+            .header("cache-control", "no-cache")
+            .header("x-ht-os", "android")
+            .header("x-ht-lang", "English")
+            .header("x-ht-version", "6.1.0")
+            .header("x-ht-device", "SM-A908N#720X1280#360#360#320#20.4")
+            .header("x-ht-os-version", "11")
+            .header("x-ht-tzid", "Africa/Casablanca")
+            .header("x-ht-timezone", ".00")
+            .header("x-ht-pub", session.headerValue())
+            .header("content-length", String.valueOf(encryptedPayload.length))
+            .header("accept-encoding", "gzip");
+
+        BlockingHttpClient blockingClient = httpClient.toBlocking();
+        HttpResponse<byte[]> resp = blockingClient.exchange(httpRequest);
+        byte[] responseBytes = resp.body();
+        if (responseBytes == null || responseBytes.length == 0) {
+            throw new JilaliException(1, "Empty userinfo response", io.micronaut.http.HttpStatus.BAD_GATEWAY);
+        }
+        UserInfoResponse raw = EncbinUtil.decrypt(responseBytes, session.sharedSecret(), UserInfoResponse.class);
+        return raw.toUserInfo();
     }
 }

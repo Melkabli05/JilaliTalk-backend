@@ -2,6 +2,7 @@ package com.jilali.user;
 
 import com.jilali.client.JilaliGateway;
 import com.jilali.user.dto.HostStatus;
+import com.jilali.user.dto.UserInfo;
 import com.jilali.user.dto.UserStatus;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.MediaType;
@@ -95,5 +96,10 @@ public class UserController {
                                         @QueryValue(defaultValue = "2") int busiType) {
         var bytes = liveHub.userProfile(busiType, cname, userId);
         return HttpResponse.ok(bytes).contentType("bin/cc2018");
+    }
+
+    @Get("/info")
+    public UserInfo userInfo(@QueryValue long userId) {
+        return liveHub.userInfo(userId);
     }
 }

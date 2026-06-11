@@ -1,6 +1,7 @@
 package com.jilali.client;
 
 import com.jilali.core.JilaliEnvelope;
+import com.jilali.user.dto.UserInfoRequest;
 import com.jilali.room.dto.ChannelListItem;
 import com.jilali.room.dto.ChannelListResponse;
 import com.jilali.room.dto.CreateVoiceChannelRequest;
@@ -236,6 +237,11 @@ public interface JilaliClient {
     byte[] userProfile(@QueryValue("busi_type") int busiType,
                        @QueryValue String cname,
                        @QueryValue("user_id") long userId);
+
+    /** HelloTalk userinfo API — expects ht/encbin encrypted binary response. */
+    @Post(value = "/profile/v2/userinfo", processes = "ht/encbin")
+    @io.micronaut.core.annotation.Nullable
+    byte[] userInfo(@Body com.jilali.user.dto.UserInfoRequest body);
 
     @Serdeable
     record JoinQuitRequest(String cname, int busi_type) {
