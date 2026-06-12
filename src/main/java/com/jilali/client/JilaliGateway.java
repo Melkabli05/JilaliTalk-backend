@@ -201,6 +201,10 @@ public class JilaliGateway {
         JilaliResponses.unwrap(client.deviceControl(body));
     }
 
+    public com.jilali.stage.dto.PublisherTokenResponse publisherRtcToken(String cname) {
+        return JilaliResponses.unwrap(client.publisherRtcToken(cname));
+    }
+
     // ---- Manager ----
 
     public com.jilali.manager.dto.ManagerListResponse managerList(String cname, long hostId) {

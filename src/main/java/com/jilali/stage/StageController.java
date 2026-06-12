@@ -1,6 +1,8 @@
 package com.jilali.stage;
 
 import com.jilali.client.JilaliGateway;
+import com.jilali.room.AgoraTokenCipher;
+import com.jilali.stage.dto.PublisherTokenResponse;
 import com.jilali.stage.dto.DeviceControlRequest;
 import com.jilali.stage.dto.KickRequest;
 import com.jilali.stage.dto.RaiseHandApprovalRequest;
@@ -87,5 +89,17 @@ public class StageController {
             @Valid @Body DeviceControlRequest request) {
         liveHub.deviceControl(request);
         return HttpResponse.noContent();
+    }
+
+    /**
+     * Plain Agora token with publisher privilege for {@code cname}. The join token from
+     * {@code voice_room_info} only carries subscriber rights; clients renew with this token
+     * before publishing audio. LiveHub returns it AES-encrypted like the join token, so it
+     * goes through the same {@link AgoraTokenCipher}.
+     */
+    @Get("/publisher-token")
+    public PublisherTokenResponse publisherToken(@QueryValue @NotBlank String cname) {
+        PublisherTokenResponse upstream = liveHub.publisherRtcToken(cname);
+        return new PublisherTokenResponse(AgoraTokenCipher.decrypt(upstream.token()));
     }
 }

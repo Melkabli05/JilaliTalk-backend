@@ -169,6 +169,9 @@ public interface JilaliClient {
     @Post("/stage/device_control")
     JilaliEnvelope<Object> deviceControl(@Body com.jilali.stage.dto.DeviceControlRequest body);
 
+    @Get("/publisher_rtc_token")
+    JilaliEnvelope<com.jilali.stage.dto.PublisherTokenResponse> publisherRtcToken(@QueryValue String cname);
+
     // ---- Manager ----
 
     @Get("/user/manager_list")

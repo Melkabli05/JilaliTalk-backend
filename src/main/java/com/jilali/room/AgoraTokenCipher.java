@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
  * fixed key, and a hex-encoded ciphertext. Tokens that already start with {@code 006}/{@code 007}
  * are plain and pass through untouched.
  */
-final class AgoraTokenCipher {
+public final class AgoraTokenCipher {
 
     // ASCII "15helloTCJTALK20" — the 16-byte AES key used by the upstream.
     private static final byte[] KEY = "15helloTCJTALK20".getBytes(StandardCharsets.US_ASCII);
@@ -24,7 +24,7 @@ final class AgoraTokenCipher {
     }
 
     /** Returns the plain Agora token, or the input unchanged if it is already plain or undecryptable. */
-    static String decrypt(String token) {
+    public static String decrypt(String token) {
         if (token == null || token.isEmpty()) {
             return token;
         }
