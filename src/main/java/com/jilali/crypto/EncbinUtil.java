@@ -61,12 +61,23 @@ public final class EncbinUtil {
      */
     public static <T> T decrypt(byte[] encrypted, String sharedSecretHex, Class<T> clazz) {
         try {
+            return MAPPER.readValue(decryptToJson(encrypted, sharedSecretHex), clazz);
+        } catch (Exception e) {
+            throw new RuntimeException("ht/encbin decryption failed", e);
+        }
+    }
+
+    /**
+     * Decrypts ht/encbin bytes to the raw (decompressed) JSON payload, without mapping to a POJO.
+     * Useful for inspecting fields the target DTO doesn't capture.
+     */
+    public static byte[] decryptToJson(byte[] encrypted, String sharedSecretHex) {
+        try {
             byte[] key = HexFormat.of().parseHex(sharedSecretHex);
             Cipher cipher = Cipher.getInstance(ALGORITHM, "BC");
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"));
             byte[] decrypted = cipher.doFinal(encrypted);
-            byte[] payload = maybeGunzip(decrypted);
-            return MAPPER.readValue(payload, clazz);
+            return maybeGunzip(decrypted);
         } catch (Exception e) {
             throw new RuntimeException("ht/encbin decryption failed", e);
         }
