@@ -8,6 +8,7 @@ import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
 import com.jilali.room.dto.EndChannelRequest;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
+import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.signin.dto.ClaimRewardRequest;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
@@ -43,9 +44,9 @@ public class JilaliGateway {
     private final HttpClient httpClient;
     private final JilaliProperties properties;
 
-    public JilaliGateway(JilaliClient client, @Client HttpClient httpClient, JilaliProperties properties) {
+    public JilaliGateway(JilaliClient client, @Client("jlhub") HttpClient jlhubClient, JilaliProperties properties) {
         this.client = client;
-        this.httpClient = httpClient;
+        this.httpClient = jlhubClient;
         this.properties = properties;
     }
 
@@ -86,12 +87,12 @@ public class JilaliGateway {
         return JilaliResponses.unwrap(client.categoryTopicList(busiType));
     }
 
-    public com.jilali.room.dto.VoiceRoomInfoResponse voiceRoomInfo(String cname) {
+    public VoiceRoomInfoResponse voiceRoomInfo(String cname) {
         return JilaliResponses.unwrap(client.voiceRoomInfo(cname));
     }
 
 
-    public Map<String, Object> liveRoomInfo(String cname) {
+    public VoiceRoomInfoResponse liveRoomInfo(String cname) {
         return JilaliResponses.unwrap(client.liveRoomInfo(cname));
     }
 
@@ -285,40 +286,44 @@ public class JilaliGateway {
         var request = UserInfoRequest.forUser(userId);
         byte[] encryptedPayload = EncbinUtil.encrypt(request, session.sharedSecret());
 
-        String upstreamUrl = properties.defaultAuthToken().isEmpty()
-            ? "https://api-global.hellotalk8.com"
-            : "https://api-global.hellotalk8.com";
-
         String token = properties.defaultAuthToken();
         String fixDid = "4050e6f3ca1a3029ba21a01f4e3f13ba";
 
         HttpRequest<byte[]> httpRequest = HttpRequest.POST(
-                upstreamUrl + "/livehub/profile/v2/userinfo", encryptedPayload)
+                "/profile/v2/userinfo", encryptedPayload)
             .header("ht-content-type", "ht/encbin")
-            .header("accept-charset", "UTF-8,*;q=0.5")
-            .header("x-ht-did", fixDid)
-            .header("user-agent", "android;6.1.0;SM-A908N;11;" + userId)
-            .header("x-ht-ui-mode", "1")
-            .header("x-request-start", String.valueOf(System.currentTimeMillis()))
-            .header("x-ht-channel", "google")
-            .header("authorization", "Bearer " + token)
-            .header("x-ht-build", "135")
-            .header("x-ht-uid", String.valueOf(userId))
-            .header("cache-control", "no-cache")
-            .header("x-ht-os", "android")
-            .header("x-ht-lang", "English")
+            .header("Content-Type", "application/octet-stream")
+            .header("Accept", "*/*")
+            .header("Accept-Charset", "UTF-8,*;q=0.5")
+            .header("Accept-Encoding", "gzip")
+            .header("Accept-Language", "en-MA;q=1.0, fr-MA;q=0.9, ar-MA;q=0.8")
+            .header("Cache-Control", "no-cache")
+            .header("User-Agent", "android;6.1.0;SM-A908N;11;" + userId)
             .header("x-ht-version", "6.1.0")
+            .header("x-ht-timezone", ".00")
+            .header("x-ht-tzid", "Africa/Casablanca")
+            .header("x-ht-ui-mode", "1")
+            .header("x-ht-channel", "google")
             .header("x-ht-device", "SM-A908N#720X1280#360#360#320#20.4")
             .header("x-ht-os-version", "11")
-            .header("x-ht-tzid", "Africa/Casablanca")
-            .header("x-ht-timezone", ".00")
+            .header("x-ht-os", "android")
+            .header("x-ht-lang", "English")
+            .header("x-ht-uid", String.valueOf(userId))
+            .header("x-ht-did", fixDid)
+            .header("x-ht-build", "135")
+            .header("x-ht-token", "Bearer " + token)
+            .header("Authorization", "Bearer " + token)
             .header("x-ht-pub", session.headerValue())
-            .header("content-length", String.valueOf(encryptedPayload.length))
-            .header("accept-encoding", "gzip");
+            .header("Content-Length", String.valueOf(encryptedPayload.length));
 
         BlockingHttpClient blockingClient = httpClient.toBlocking();
-        HttpResponse<byte[]> resp = blockingClient.exchange(httpRequest);
-        byte[] responseBytes = resp.body();
+        byte[] responseBytes;
+        try {
+            responseBytes = blockingClient.retrieve(httpRequest, byte[].class);
+        } catch (io.micronaut.http.client.exceptions.HttpClientResponseException e) {
+            log.error("userInfo upstream error: status={}", e.getStatus());
+            throw new JilaliException(1, "Upstream userinfo failed: " + e.getStatus(), io.micronaut.http.HttpStatus.BAD_GATEWAY);
+        }
         if (responseBytes == null || responseBytes.length == 0) {
             throw new JilaliException(1, "Empty userinfo response", io.micronaut.http.HttpStatus.BAD_GATEWAY);
         }

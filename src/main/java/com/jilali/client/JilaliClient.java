@@ -8,6 +8,7 @@ import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
 import com.jilali.room.dto.EndChannelRequest;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
+import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.signin.dto.ClaimRewardRequest;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
@@ -75,10 +76,10 @@ public interface JilaliClient {
     // ---- Info (enveloped) ----
 
     @Get("/voice_room_info")
-    JilaliEnvelope<com.jilali.room.dto.VoiceRoomInfoResponse> voiceRoomInfo(@QueryValue String cname);
+    JilaliEnvelope<VoiceRoomInfoResponse> voiceRoomInfo(@QueryValue String cname);
 
     @Get("/live_room_info")
-    JilaliEnvelope<Map<String, Object>> liveRoomInfo(@QueryValue String cname);
+    JilaliEnvelope<VoiceRoomInfoResponse> liveRoomInfo(@QueryValue String cname);
 
     @Get("/channel_basic_info")
     JilaliEnvelope<Map<String, Object>> channelBasicInfo(@QueryValue String cname);

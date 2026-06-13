@@ -7,7 +7,6 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.Security;
 import java.util.zip.GZIPInputStream;
 import java.io.ByteArrayInputStream;
@@ -38,7 +37,7 @@ public final class EncbinUtil {
     public static byte[] encrypt(Object payload, String sharedSecretHex) {
         try {
             byte[] plaintext = MAPPER.writeValueAsBytes(payload);
-            byte[] key = sha256(Hex.decode(sharedSecretHex));
+            byte[] key = Hex.decode(sharedSecretHex);
             Cipher cipher = Cipher.getInstance(ALGORITHM, "BC");
             cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"));
             return cipher.doFinal(plaintext);
@@ -56,7 +55,7 @@ public final class EncbinUtil {
      */
     public static <T> T decrypt(byte[] encrypted, String sharedSecretHex, Class<T> clazz) {
         try {
-            byte[] key = sha256(Hex.decode(sharedSecretHex));
+            byte[] key = Hex.decode(sharedSecretHex);
             Cipher cipher = Cipher.getInstance(ALGORITHM, "BC");
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"));
             byte[] decrypted = cipher.doFinal(encrypted);
@@ -78,12 +77,9 @@ public final class EncbinUtil {
         return data;
     }
 
-    private static byte[] sha256(byte[] data) throws Exception {
-        return MessageDigest.getInstance("SHA-256").digest(data);
-    }
-
     private static final ObjectMapper MAPPER = new ObjectMapper()
-        .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
+        .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+        .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
     private static final class Hex {
         static byte[] decode(String s) {
