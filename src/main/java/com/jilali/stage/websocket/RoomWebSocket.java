@@ -1,14 +1,19 @@
-package com.jilali.websocket;
+package com.jilali.stage.websocket;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.client.JilaliGateway;
 import com.jilali.core.JilaliProperties;
+import com.jilali.stage.dto.RaiseHandRequest;
+import com.jilali.stage.dto.StageActionRequest;
 import io.micronaut.websocket.WebSocketSession;
 import io.micronaut.websocket.annotation.*;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -17,6 +22,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class RoomWebSocket {
 
     private static final Logger log = LoggerFactory.getLogger(RoomWebSocket.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final JilaliGateway gateway;
     private final JilaliProperties properties;
@@ -156,14 +162,12 @@ public class RoomWebSocket {
             return;
         }
 
-        Object textObj = message.get("text");
-        String text = textObj instanceof String ? (String) textObj : "";
-        if (text.isBlank()) return;
+        if (!(message.get("text") instanceof String text) || text.isBlank()) return;
 
         // Broadcast the comment to all in room (real-time), with the sender's real nickname.
         broadcastToRoom(Map.of(
             "type", "new-comment",
-            "id", java.util.UUID.randomUUID().toString(),
+            "id", UUID.randomUUID().toString(),
             "uid", uid,
             "name", nicknameFor(uid),
             "avatar", "",
@@ -178,7 +182,7 @@ public class RoomWebSocket {
 
         boolean raised = Boolean.TRUE.equals(message.get("raised"));
         try {
-            var request = new com.jilali.stage.dto.RaiseHandRequest(cname, raised ? 1 : 0, 2);
+            var request = new RaiseHandRequest(cname, raised ? 1 : 0, 2);
             gateway.raiseHand(request);
         } catch (Exception e) {
             log.warn("Failed to raise hand: {}", e.getMessage());
@@ -235,7 +239,7 @@ public class RoomWebSocket {
         if (uid == null) return;
 
         try {
-            var request = new com.jilali.stage.dto.StageActionRequest(cname, 2);
+            var request = new StageActionRequest(cname, 2);
             gateway.stageJoin(request);
         } catch (Exception e) {
             log.warn("Failed to force stage: {}", e.getMessage());
@@ -301,8 +305,8 @@ public class RoomWebSocket {
         try {
             String[] parts = token.split("\\.");
             if (parts.length < 2) return null;
-            String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]));
-            Map<?, ?> claims = new com.fasterxml.jackson.databind.ObjectMapper().readValue(payload, Map.class);
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]));
+            Map<?, ?> claims = MAPPER.readValue(payload, Map.class);
             Object uid = claims.get("uid");
             return uid != null ? String.valueOf(uid) : null;
         } catch (Exception e) {
@@ -317,8 +321,7 @@ public class RoomWebSocket {
 
         String json;
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            json = mapper.writeValueAsString(payload);
+            json = MAPPER.writeValueAsString(payload);
         } catch (Exception e) {
             log.warn("Failed to serialize broadcast payload: {}", e.getMessage());
             return;

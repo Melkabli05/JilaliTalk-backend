@@ -18,10 +18,11 @@ import com.jilali.user.dto.UserInfoResponse;
 import com.jilali.crypto.Curve25519SessionGenerator;
 import com.jilali.crypto.EncbinUtil;
 import io.micronaut.http.HttpRequest;
-import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
 import io.micronaut.http.client.BlockingHttpClient;
 import io.micronaut.http.client.HttpClient;
 import io.micronaut.http.client.annotation.Client;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -313,19 +314,18 @@ public class JilaliGateway {
             .header("x-ht-build", "135")
             .header("x-ht-token", "Bearer " + token)
             .header("Authorization", "Bearer " + token)
-            .header("x-ht-pub", session.headerValue())
-            .header("Content-Length", String.valueOf(encryptedPayload.length));
+            .header("x-ht-pub", session.headerValue());
 
         BlockingHttpClient blockingClient = httpClient.toBlocking();
         byte[] responseBytes;
         try {
             responseBytes = blockingClient.retrieve(httpRequest, byte[].class);
-        } catch (io.micronaut.http.client.exceptions.HttpClientResponseException e) {
+        } catch (HttpClientResponseException e) {
             log.error("userInfo upstream error: status={}", e.getStatus());
-            throw new JilaliException(1, "Upstream userinfo failed: " + e.getStatus(), io.micronaut.http.HttpStatus.BAD_GATEWAY);
+            throw new JilaliException(1, "Upstream userinfo failed: " + e.getStatus(), HttpStatus.BAD_GATEWAY);
         }
         if (responseBytes == null || responseBytes.length == 0) {
-            throw new JilaliException(1, "Empty userinfo response", io.micronaut.http.HttpStatus.BAD_GATEWAY);
+            throw new JilaliException(1, "Empty userinfo response", HttpStatus.BAD_GATEWAY);
         }
         UserInfoResponse raw = EncbinUtil.decrypt(responseBytes, session.sharedSecret(), UserInfoResponse.class);
         return raw.toUserInfo();
