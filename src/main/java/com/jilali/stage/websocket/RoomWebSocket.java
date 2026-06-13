@@ -1,7 +1,7 @@
 package com.jilali.websocket;
 
 import com.jilali.client.JilaliGateway;
-import com.jilali.core.JilaliException;
+import com.jilali.core.JilaliProperties;
 import io.micronaut.websocket.WebSocketSession;
 import io.micronaut.websocket.annotation.*;
 import jakarta.inject.Singleton;
@@ -19,12 +19,17 @@ public class RoomWebSocket {
     private static final Logger log = LoggerFactory.getLogger(RoomWebSocket.class);
 
     private final JilaliGateway gateway;
+    private final JilaliProperties properties;
     private final Map<String, CopyOnWriteArrayList<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, String> sessionRooms = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, String> sessionUsers = new ConcurrentHashMap<>();
+    // Nickname cache keyed by uid. The userinfo endpoint is an encrypted upstream round-trip,
+    // so resolving a name once per uid (not once per message) keeps comment broadcasts cheap.
+    private final Map<String, String> nicknameCache = new ConcurrentHashMap<>();
 
-    public RoomWebSocket(JilaliGateway gateway) {
+    public RoomWebSocket(JilaliGateway gateway, JilaliProperties properties) {
         this.gateway = gateway;
+        this.properties = properties;
     }
 
     @OnOpen
@@ -32,6 +37,16 @@ public class RoomWebSocket {
         log.info("WebSocket opened for room: {}", cname);
         roomSessions.computeIfAbsent(cname, k -> new CopyOnWriteArrayList<>()).add(session);
         sessionRooms.put(session, cname);
+
+        // The frontend authenticates to the BFF with no per-user JWT — every request is proxied
+        // upstream under the single configured token. Derive the uid from that same token on open
+        // so join-room/send-comment are authenticated without the client sending an `auth` message.
+        // A client may still override this by sending `auth` with its own JWT (multi-user future).
+        String uid = uidFromJwt(properties.defaultAuthToken());
+        if (uid != null) {
+            sessionUsers.put(session, uid);
+        }
+
         session.sendSync(Map.of("type", "connected", "cname", cname));
     }
 
@@ -87,19 +102,10 @@ public class RoomWebSocket {
     private void handleAuth(Map<String, Object> message, WebSocketSession session) {
         Object jwt = message.get("jwt");
         if (jwt instanceof String token && !token.isBlank()) {
-            try {
-                String[] parts = token.split("\\.");
-                if (parts.length >= 2) {
-                    String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]));
-                    Map<String, Object> claims = new com.fasterxml.jackson.databind.ObjectMapper().readValue(payload, Map.class);
-                    Object uid = claims.get("uid");
-                    if (uid != null) {
-                        sessionUsers.put(session, String.valueOf(uid));
-                        session.sendSync(Map.of("type", "auth-ok", "uid", uid));
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to parse JWT in WS auth: {}", e.getMessage());
+            String uid = uidFromJwt(token);
+            if (uid != null) {
+                sessionUsers.put(session, uid);
+                session.sendSync(Map.of("type", "auth-ok", "uid", uid));
             }
         }
     }
@@ -111,10 +117,12 @@ public class RoomWebSocket {
             return;
         }
 
-        // Broadcast join to all in room
+        // Broadcast join to all in room, carrying the resolved nickname so other clients
+        // render a real name instead of a placeholder.
         broadcastToRoom(Map.of(
             "type", "user-join",
-            "uid", uid
+            "uid", uid,
+            "name", nicknameFor(uid)
         ), session, cname);
 
         // Send current state
@@ -152,12 +160,12 @@ public class RoomWebSocket {
         String text = textObj instanceof String ? (String) textObj : "";
         if (text.isBlank()) return;
 
-        // Broadcast the comment to all in room (real-time)
+        // Broadcast the comment to all in room (real-time), with the sender's real nickname.
         broadcastToRoom(Map.of(
             "type", "new-comment",
             "id", java.util.UUID.randomUUID().toString(),
             "uid", uid,
-            "name", "User",
+            "name", nicknameFor(uid),
             "avatar", "",
             "text", text,
             "ts", System.currentTimeMillis()
@@ -175,6 +183,9 @@ public class RoomWebSocket {
         } catch (Exception e) {
             log.warn("Failed to raise hand: {}", e.getMessage());
         }
+        // Upstream doesn't push hand/stage changes back, so re-fetch the roster and fan it out
+        // to everyone — otherwise other clients never see the hand state change.
+        broadcastStageUpdate(cname, null);
     }
 
     private void handleTranslateComment(Map<String, Object> message, WebSocketSession session) {
@@ -229,6 +240,8 @@ public class RoomWebSocket {
         } catch (Exception e) {
             log.warn("Failed to force stage: {}", e.getMessage());
         }
+        // Stage membership changed — refresh the roster for everyone in the room.
+        broadcastStageUpdate(cname, null);
     }
 
     private void handleTyping(String cname, WebSocketSession session) {
@@ -237,7 +250,7 @@ public class RoomWebSocket {
 
         broadcastToRoom(Map.of(
             "type", "user-typing",
-            "name", "User"
+            "name", nicknameFor(uid)
         ), session, cname);
     }
 
@@ -247,6 +260,55 @@ public class RoomWebSocket {
             "type", "share-token",
             "error", "Share token not available"
         ));
+    }
+
+    /**
+     * Re-fetch the stage roster and broadcast it to the room. Used after mutations the upstream
+     * does not push back (raise-hand, force-stage), so all clients converge on the new state.
+     */
+    private void broadcastStageUpdate(String cname, WebSocketSession exclude) {
+        try {
+            var stageList = gateway.stageList(2, cname);
+            broadcastToRoom(Map.of(
+                "type", "stage-update",
+                "users", stageList.list()
+            ), exclude, cname);
+        } catch (Exception e) {
+            log.warn("Failed to broadcast stage update for {}: {}", cname, e.getMessage());
+        }
+    }
+
+    /** Resolve a uid's nickname, caching the result. Falls back to "Someone" on lookup failure. */
+    private String nicknameFor(String uid) {
+        String cached = nicknameCache.get(uid);
+        if (cached != null) return cached;
+        String name = "Someone";
+        try {
+            var info = gateway.userInfo(Long.parseLong(uid));
+            if (info != null && info.nickname() != null && !info.nickname().isBlank()) {
+                name = info.nickname();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve nickname for uid {}: {}", uid, e.getMessage());
+        }
+        nicknameCache.put(uid, name);
+        return name;
+    }
+
+    /** Extract the {@code uid} claim from a JWT payload, or null if it can't be parsed. */
+    private String uidFromJwt(String token) {
+        if (token == null || token.isBlank()) return null;
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) return null;
+            String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]));
+            Map<?, ?> claims = new com.fasterxml.jackson.databind.ObjectMapper().readValue(payload, Map.class);
+            Object uid = claims.get("uid");
+            return uid != null ? String.valueOf(uid) : null;
+        } catch (Exception e) {
+            log.warn("Failed to parse uid from JWT: {}", e.getMessage());
+            return null;
+        }
     }
 
     private void broadcastToRoom(Map<String, Object> payload, WebSocketSession exclude, String cname) {

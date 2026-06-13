@@ -6,6 +6,7 @@ import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
 import com.jilali.room.dto.EndChannelRequest;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
+import com.jilali.room.dto.VoiceRoomInfoResponse;
 import io.micronaut.scheduling.annotation.ExecuteOn;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
@@ -94,34 +95,27 @@ public class RoomController {
     // ---- Info ----
 
     @Get("/voice/{cname}")
-    public com.jilali.room.dto.VoiceRoomInfoResponse voiceRoomInfo(String cname) {
+    public VoiceRoomInfoResponse voiceRoomInfo(String cname) {
         return decryptRtcToken(liveHub.voiceRoomInfo(cname));
     }
 
+    @Get("/live/{cname}")
+    public VoiceRoomInfoResponse liveRoomInfo(String cname) {
+        return decryptRtcToken(liveHub.liveRoomInfo(cname));
+    }
+
     /**
-     * LiveHub hands back an AES-encrypted {@code rtc_info.token}; the browser Agora SDK needs the
-     * plain token (it carries the App ID). Rebuild the immutable response with the decrypted value
-     * so callers never see ciphertext. See {@link AgoraTokenCipher}.
+     * Shared by the voice and live info endpoints. LiveHub hands back an AES-encrypted
+     * {@code rtc_info.token}; the browser Agora SDK needs the plain token (it carries the App ID)
+     * or the gateway reports {@code CAN_NOT_GET_GATEWAY_SERVER: invalid vendor key, can not find
+     * appid}. See {@link AgoraTokenCipher}.
      */
-    private static com.jilali.room.dto.VoiceRoomInfoResponse decryptRtcToken(
-            com.jilali.room.dto.VoiceRoomInfoResponse resp) {
+    private static VoiceRoomInfoResponse decryptRtcToken(VoiceRoomInfoResponse resp) {
         if (resp == null || resp.channelInfo() == null || resp.channelInfo().rtcInfo() == null) {
             return resp;
         }
-        var ch = resp.channelInfo();
-        var rtc = ch.rtcInfo();
-        var decrypted = new com.jilali.room.dto.VoiceRoomInfoResponse.ChannelInfo.RtcInfo(
-                rtc.appId(), AgoraTokenCipher.decrypt(rtc.token()), rtc.engine());
-        var newChannel = new com.jilali.room.dto.VoiceRoomInfoResponse.ChannelInfo(
-                ch.name(), ch.langId(), ch.langs(), ch.topic(), ch.notice(), ch.noticePinType(),
-                ch.hourRank(), ch.topLastHourRanking(), decrypted);
-        return new com.jilali.room.dto.VoiceRoomInfoResponse(
-                resp.hostInfo(), resp.reqUserInfo(), newChannel);
-    }
-
-    @Get("/live/{cname}")
-    public Map<String, Object> liveRoomInfo(String cname) {
-        return liveHub.liveRoomInfo(cname);
+        var encrypted = resp.channelInfo().rtcInfo().token();
+        return resp.withRtcToken(AgoraTokenCipher.decrypt(encrypted));
     }
 
     @Get("/{cname}/basic")

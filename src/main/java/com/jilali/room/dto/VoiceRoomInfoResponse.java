@@ -10,6 +10,24 @@ public record VoiceRoomInfoResponse(
         @JsonProperty("req_user_info") @Nullable ReqUserInfo reqUserInfo,
         @JsonProperty("channel_info") @Nullable ChannelInfo channelInfo) {
 
+    /**
+     * Returns a copy with the RTC token replaced, or {@code this} when there is no {@code rtc_info}.
+     * Swaps the AES-encrypted upstream token for the plain Agora token before responding, keeping
+     * the immutable-record rebuild next to the data instead of in the controller.
+     */
+    public VoiceRoomInfoResponse withRtcToken(String token) {
+        if (channelInfo == null || channelInfo.rtcInfo() == null) {
+            return this;
+        }
+        var rtc = channelInfo.rtcInfo();
+        var channel = new ChannelInfo(
+                channelInfo.name(), channelInfo.langId(), channelInfo.langs(), channelInfo.topic(),
+                channelInfo.notice(), channelInfo.noticePinType(), channelInfo.hourRank(),
+                channelInfo.topLastHourRanking(),
+                new ChannelInfo.RtcInfo(rtc.appId(), token, rtc.engine()));
+        return new VoiceRoomInfoResponse(hostInfo, reqUserInfo, channel);
+    }
+
     @Serdeable
     public record HostInfo(
             @JsonProperty("user_id") long userId,
