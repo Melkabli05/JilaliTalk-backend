@@ -4,11 +4,16 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 
+import java.util.List;
+
 @Serdeable
 public record VoiceRoomInfoResponse(
         @JsonProperty("host_info") @Nullable HostInfo hostInfo,
         @JsonProperty("req_user_info") @Nullable ReqUserInfo reqUserInfo,
-        @JsonProperty("channel_info") @Nullable ChannelInfo channelInfo) {
+        @JsonProperty("channel_info") @Nullable ChannelInfo channelInfo,
+        @JsonProperty("config_info") @Nullable ConfigInfo configInfo,
+        @JsonProperty("room_level_info") @Nullable RoomLevelInfo roomLevelInfo,
+        @Nullable List<ManagerInfo> managers) {
 
     /**
      * Returns a copy with the RTC token replaced, or {@code this} when there is no {@code rtc_info}.
@@ -24,8 +29,14 @@ public record VoiceRoomInfoResponse(
                 channelInfo.name(), channelInfo.langId(), channelInfo.langs(), channelInfo.topic(),
                 channelInfo.notice(), channelInfo.noticePinType(), channelInfo.hourRank(),
                 channelInfo.topLastHourRanking(),
+                channelInfo.pinnedComment(), channelInfo.allowCommentStatus(), channelInfo.roomStatus(),
+                channelInfo.startedAt(), channelInfo.audienceCount(), channelInfo.raiseHandUserCount(),
+                channelInfo.onMicCount(), channelInfo.totalActiveNum(), channelInfo.roomDuration(),
+                channelInfo.visibleStatus(), channelInfo.category(), channelInfo.privateRoomKey(),
+                channelInfo.categoryTopicTag(), channelInfo.gameType(), channelInfo.tagType(),
+                channelInfo.hasTreasureBox(),
                 new ChannelInfo.RtcInfo(rtc.appId(), token, rtc.engine()));
-        return new VoiceRoomInfoResponse(hostInfo, reqUserInfo, channel);
+        return new VoiceRoomInfoResponse(hostInfo, reqUserInfo, channel, configInfo, roomLevelInfo, managers);
     }
 
     @Serdeable
@@ -46,7 +57,22 @@ public record VoiceRoomInfoResponse(
             @JsonProperty("relation_type") int relationType,
             @JsonProperty("is_on_mic") boolean isOnMic,
             @JsonProperty("is_turn_on_mic") boolean isTurnOnMic,
-            @JsonProperty("payment_status_for_session") boolean paymentStatusForSession) {
+            @JsonProperty("payment_status_for_session") boolean paymentStatusForSession,
+            @Nullable Ripple ripple,
+            @JsonProperty("internal_user") boolean internalUser,
+            @JsonProperty("is_use_happy_chat_card") boolean isUseHappyChatCard,
+            @JsonProperty("is_show_week_card") boolean isShowWeekCard,
+            @JsonProperty("remain_join_dur_secs") long remainJoinDurSecs,
+            @JsonProperty("join_dur_expired_at") long joinDurExpiredAt,
+            @JsonProperty("lucky_bag_icon") @Nullable String luckyBagIcon) {
+
+        @Serdeable
+        public record Ripple(
+                @JsonProperty("ripple_id") long rippleId,
+                @JsonProperty("ripple_url") @Nullable String rippleUrl,
+                @JsonProperty("ripple_animal_type") int rippleAnimalType,
+                @JsonProperty("ripple_animal_url") @Nullable String rippleAnimalUrl) {
+        }
     }
 
     @Serdeable
@@ -59,6 +85,22 @@ public record VoiceRoomInfoResponse(
             @JsonProperty("notice_pin_type") int noticePinType,
             @JsonProperty("hour_rank") int hourRank,
             @JsonProperty("top_last_hour_ranking") boolean topLastHourRanking,
+            @JsonProperty("pinned_comment") @Nullable String pinnedComment,
+            @JsonProperty("allow_comment_status") int allowCommentStatus,
+            @JsonProperty("room_status") int roomStatus,
+            @JsonProperty("started_at") long startedAt,
+            @JsonProperty("audience_count") int audienceCount,
+            @JsonProperty("raise_hand_user_count") int raiseHandUserCount,
+            @JsonProperty("on_mic_count") int onMicCount,
+            @JsonProperty("total_active_num") int totalActiveNum,
+            @JsonProperty("room_duration") long roomDuration,
+            @JsonProperty("visible_status") int visibleStatus,
+            @Nullable String category,
+            @JsonProperty("private_room_key") @Nullable String privateRoomKey,
+            @JsonProperty("category_topic_tag") @Nullable CategoryTopicTag categoryTopicTag,
+            @JsonProperty("game_type") int gameType,
+            @JsonProperty("tag_type") int tagType,
+            @JsonProperty("has_treasure_box") boolean hasTreasureBox,
             @JsonProperty("rtc_info") @Nullable RtcInfo rtcInfo) {
 
         @Serdeable
@@ -67,5 +109,54 @@ public record VoiceRoomInfoResponse(
                 @Nullable String token,
                 @JsonProperty("engine") @Nullable String engine) {
         }
+
+        @Serdeable
+        public record CategoryTopicTag(
+                @JsonProperty("category_id") int categoryId,
+                @JsonProperty("category_name") @Nullable String categoryName,
+                @Nullable String icon,
+                @JsonProperty("selected_icon") @Nullable String selectedIcon,
+                @JsonProperty("bg_color") @Nullable String bgColor,
+                @JsonProperty("font_color") @Nullable String fontColor,
+                @JsonProperty("topic_id") int topicId,
+                @JsonProperty("topic_name") @Nullable String topicName) {
+        }
+    }
+
+    @Serdeable
+    public record ConfigInfo(
+            @JsonProperty("heartbeat_second") int heartbeatSecond,
+            @JsonProperty("show_blind_box_gift") boolean showBlindBoxGift,
+            @JsonProperty("level_up_show") boolean levelUpShow,
+            @JsonProperty("up_level") int upLevel,
+            @JsonProperty("gift_send_show") boolean giftSendShow,
+            @JsonProperty("entrance_effect_switch_status") boolean entranceEffectSwitchStatus,
+            @JsonProperty("gift_effect_switch_status") boolean giftEffectSwitchStatus,
+            @JsonProperty("comment_vip_tag_show") boolean commentVipTagShow,
+            @JsonProperty("comment_admin_tag_show") boolean commentAdminTagShow,
+            @JsonProperty("stage_list_admin_tag_show") boolean stageListAdminTagShow) {
+    }
+
+    @Serdeable
+    public record RoomLevelInfo(
+            int level,
+            @JsonProperty("level_icon") @Nullable String levelIcon,
+            @JsonProperty("level_rtl_icon") @Nullable String levelRtlIcon,
+            @JsonProperty("level_icon_v2") @Nullable String levelIconV2,
+            @JsonProperty("level_rtl_icon_v2") @Nullable String levelRtlIconV2,
+            @JsonProperty("label_font_color") @Nullable String labelFontColor) {
+    }
+
+    @Serdeable
+    public record ManagerInfo(
+            @JsonProperty("user_id") long userId,
+            @JsonProperty("head_url") @Nullable String headUrl,
+            @Nullable String nationality,
+            @JsonProperty("nick_name") @Nullable String nickName,
+            @JsonProperty("user_name") @Nullable String userName,
+            @JsonProperty("short_full_py") @Nullable String shortFullPy,
+            @JsonProperty("full_py") @Nullable String fullPy,
+            @JsonProperty("stay_time") long stayTime,
+            @JsonProperty("is_online") int isOnline) {
     }
 }
