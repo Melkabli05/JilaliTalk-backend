@@ -7,4 +7,4 @@ lsof -ti:8080 | xargs kill -9 2>/dev/null
 sleep 1
 
 # Start the Micronaut BFF
-exec ./gradlew run
+exec ./gradlew clean classes run
