@@ -266,6 +266,10 @@ public class JilaliGateway {
         JilaliResponses.unwrap(client.voiceTaskReward(body));
     }
 
+    public com.jilali.room.dto.RoomLevelConfigResponse roomLevelConfig(String cname, long hostId) {
+        return JilaliResponses.unwrap(client.roomLevelConfig(cname, hostId));
+    }
+
     // ---- User status & profile ----
 
     public com.jilali.user.dto.UserStatus userStatus(long userId) {

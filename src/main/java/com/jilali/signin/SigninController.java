@@ -50,4 +50,11 @@ public class SigninController {
         liveHub.voiceTaskReward(request);
         return HttpResponse.noContent();
     }
+
+    @Get("/room-level-config")
+    public com.jilali.room.dto.RoomLevelConfigResponse roomLevelConfig(
+            @QueryValue String cname,
+            @QueryValue("host_id") long hostId) {
+        return liveHub.roomLevelConfig(cname, hostId);
+    }
 }

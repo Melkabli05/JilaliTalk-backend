@@ -219,13 +219,19 @@ public interface JilaliClient {
 
     @Get("/voice/room_level/reward")
     JilaliEnvelope<RoomLevelRewardResponse> roomLevelReward(
- @QueryValue String cname,
+        @QueryValue String cname,
         @QueryValue("host_id") long hostId,
         @QueryValue int level
     );
 
     @Post("/voice/room_level/reward")
     JilaliEnvelope<Object> claimRoomLevelReward(@Body ClaimRewardRequest body);
+
+    @Get("/voice/room_level/config")
+    JilaliEnvelope<com.jilali.room.dto.RoomLevelConfigResponse> roomLevelConfig(
+        @QueryValue String cname,
+        @QueryValue("host_id") long hostId
+    );
 
     // ---- User status & profile ----
 
