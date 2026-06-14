@@ -9,6 +9,7 @@ import com.jilali.room.dto.EndChannelRequest;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.signin.dto.ClaimRewardRequest;
+import com.jilali.signin.dto.ClaimTaskRewardRequest;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
 import com.jilali.stage.dto.KickRequest;
@@ -212,6 +213,9 @@ public interface JilaliClient {
 
     @Get("/voice/tasks")
     JilaliEnvelope<Object> voiceTasks();
+
+    @Post("/voice/task/reward")
+    JilaliEnvelope<Object> voiceTaskReward(@Body ClaimTaskRewardRequest body);
 
     @Get("/voice/room_level/reward")
     JilaliEnvelope<RoomLevelRewardResponse> roomLevelReward(

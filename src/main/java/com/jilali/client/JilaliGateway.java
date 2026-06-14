@@ -10,6 +10,7 @@ import com.jilali.room.dto.EndChannelRequest;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.signin.dto.ClaimRewardRequest;
+import com.jilali.signin.dto.ClaimTaskRewardRequest;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
 import com.jilali.user.dto.UserInfo;
@@ -259,6 +260,10 @@ public class JilaliGateway {
 
     public void claimRoomLevelReward(ClaimRewardRequest body) {
         JilaliResponses.unwrap(client.claimRoomLevelReward(body));
+    }
+
+    public void voiceTaskReward(ClaimTaskRewardRequest body) {
+        JilaliResponses.unwrap(client.voiceTaskReward(body));
     }
 
     // ---- User status & profile ----

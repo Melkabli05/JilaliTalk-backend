@@ -2,6 +2,7 @@ package com.jilali.signin;
 
 import com.jilali.client.JilaliGateway;
 import com.jilali.signin.dto.ClaimRewardRequest;
+import com.jilali.signin.dto.ClaimTaskRewardRequest;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
 import io.micronaut.http.HttpResponse;
@@ -41,6 +42,12 @@ public class SigninController {
     @Post("/room-level-reward")
     public HttpResponse<Void> claimRoomLevelReward(@Valid @Body ClaimRewardRequest request) {
         liveHub.claimRoomLevelReward(request);
+        return HttpResponse.noContent();
+    }
+
+    @Post("/task-reward")
+    public HttpResponse<Void> claimTaskReward(@Valid @Body ClaimTaskRewardRequest request) {
+        liveHub.voiceTaskReward(request);
         return HttpResponse.noContent();
     }
 }
