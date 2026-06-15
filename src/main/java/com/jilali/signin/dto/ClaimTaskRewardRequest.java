@@ -1,10 +1,13 @@
 package com.jilali.signin.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.micronaut.serde.annotation.Serdeable;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 
 @Serdeable
 public record ClaimTaskRewardRequest(
-    long host_id,
-    String cname,
-    int task_id
+    @JsonProperty("host_id") @Positive long hostId,
+    @NotBlank String cname,
+    @JsonProperty("task_id") int taskId
 ) {}

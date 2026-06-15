@@ -18,6 +18,11 @@ public final class JilaliException extends RuntimeException {
         this.status = status;
     }
 
+    /** Convenience constructor for errors that don't originate from an upstream code. */
+    public JilaliException(String message, HttpStatus status) {
+        this(0, message, status);
+    }
+
     public int upstreamCode() {
         return upstreamCode;
     }
@@ -33,7 +38,13 @@ public final class JilaliException extends RuntimeException {
     public static JilaliException fromCode(int code, String msg) {
         var status = switch (code) {
             case 100002 -> HttpStatus.BAD_REQUEST;          // "bad request" (e.g. caller not host)
+            case 100003, 100004 -> HttpStatus.UNAUTHORIZED; // session expired / not authenticated
+            case 100005 -> HttpStatus.FORBIDDEN;            // insufficient permissions
             case 190032 -> HttpStatus.UNPROCESSABLE_ENTITY; // VoiceManagerUpdateFailed
+            case 200001, 200002 -> HttpStatus.NOT_FOUND;    // room / user not found
+            case 300001 -> HttpStatus.CONFLICT;             // already in room / already joined
+            case 300002 -> HttpStatus.GONE;                 // room closed / expired
+            case 400001 -> HttpStatus.TOO_MANY_REQUESTS;   // rate limited
             default -> HttpStatus.BAD_GATEWAY;
         };
         return new JilaliException(code, msg == null ? "Upstream error" : msg, status);

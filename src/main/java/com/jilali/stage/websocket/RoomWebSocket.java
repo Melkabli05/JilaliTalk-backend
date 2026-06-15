@@ -2,6 +2,7 @@ package com.jilali.stage.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.client.JilaliGateway;
+import com.jilali.client.JilaliResponses;
 import com.jilali.core.JilaliProperties;
 import com.jilali.stage.dto.RaiseHandRequest;
 import com.jilali.stage.dto.StageActionRequest;
@@ -29,9 +30,6 @@ public class RoomWebSocket {
     private final Map<String, CopyOnWriteArrayList<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, String> sessionRooms = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, String> sessionUsers = new ConcurrentHashMap<>();
-    // Nickname cache keyed by uid. The userinfo endpoint is an encrypted upstream round-trip,
-    // so resolving a name once per uid (not once per message) keeps comment broadcasts cheap.
-    private final Map<String, String> nicknameCache = new ConcurrentHashMap<>();
 
     public RoomWebSocket(JilaliGateway gateway, JilaliProperties properties) {
         this.gateway = gateway;
@@ -145,7 +143,7 @@ public class RoomWebSocket {
 
     private void handleFetchComments(String cname, WebSocketSession session) {
         try {
-            var comments = gateway.comments(2, cname);
+            var comments = JilaliResponses.unwrap(gateway.client().comments(2, cname));
             session.sendSync(Map.of(
                 "type", "comments-batch",
                 "comments", comments.items()
@@ -282,24 +280,33 @@ public class RoomWebSocket {
         }
     }
 
-    /** Resolve a uid's nickname, caching the result. Falls back to "Someone" on lookup failure. */
+    /**
+     * Resolve a uid's nickname. Falls back to "Someone" on lookup failure.
+     *
+     * <b>Security note:</b> This BFF trusts the upstream auth token implicitly — it does NOT
+     * validate JWT signatures. The uid is decoded from the JWT payload without verification.
+     * The BFF assumes the upstream has already validated the token before it reaches us.
+     * If this assumption is ever violated, any connected client can forge any uid.
+     */
     private String nicknameFor(String uid) {
-        String cached = nicknameCache.get(uid);
-        if (cached != null) return cached;
-        String name = "Someone";
         try {
-            var info = gateway.userInfo(Long.parseLong(uid));
-            if (info != null && info.nickname() != null && !info.nickname().isBlank()) {
-                name = info.nickname();
-            }
+            var info = JilaliResponses.unwrap(gateway.client().userStatus(Long.parseLong(uid)));
+            return (info != null && info.cname() != null && !info.cname().isBlank())
+                ? info.cname() : "Someone";
         } catch (Exception e) {
             log.warn("Failed to resolve nickname for uid {}: {}", uid, e.getMessage());
+            return "Someone";
         }
-        nicknameCache.put(uid, name);
-        return name;
     }
 
-    /** Extract the {@code uid} claim from a JWT payload, or null if it can't be parsed. */
+    /**
+     * Extract the {@code uid} claim from a JWT payload, or null if it can't be parsed.
+     *
+     * <b>IMPORTANT:</b> This decodes the JWT payload WITHOUT signature verification.
+     * It trusts that the upstream auth token has already been validated. Do not use this
+     * method to establish identity from a client-supplied JWT without adding signature
+     * validation first.
+     */
     private String uidFromJwt(String token) {
         if (token == null || token.isBlank()) return null;
         try {
@@ -310,7 +317,7 @@ public class RoomWebSocket {
             Object uid = claims.get("uid");
             return uid != null ? String.valueOf(uid) : null;
         } catch (Exception e) {
-            log.warn("Failed to parse uid from JWT: {}", e.getMessage());
+            log.warn("Failed to parse uid from JWT: {} — token truncated or malformed", e.getMessage());
             return null;
         }
     }
@@ -328,8 +335,12 @@ public class RoomWebSocket {
         }
 
         for (WebSocketSession s : sessions) {
-            if (s != exclude && s.isOpen()) {
-                s.sendSync(json);
+            if (s != exclude) {
+                try {
+                    if (s.isOpen()) s.sendSync(json);
+                } catch (Exception e) {
+                    log.warn("Failed to send to session in room {}: {}", cname, e.getMessage());
+                }
             }
         }
     }

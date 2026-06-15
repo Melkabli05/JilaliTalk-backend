@@ -1,7 +1,7 @@
 package com.jilali.stage;
 
 import com.jilali.client.JilaliGateway;
-import com.jilali.room.AgoraTokenCipher;
+import com.jilali.core.JilaliProperties;
 import com.jilali.stage.dto.PublisherTokenResponse;
 import com.jilali.stage.dto.DeviceControlRequest;
 import com.jilali.stage.dto.KickRequest;
@@ -22,72 +22,71 @@ import io.micronaut.http.annotation.QueryValue;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
+import java.nio.charset.StandardCharsets;
 
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/stage")
 public class StageController {
 
-    private final JilaliGateway liveHub;
+    private final JilaliGateway gateway;
+    private final byte[] agoraCipherKey;
 
-    public StageController(JilaliGateway liveHub) {
-        this.liveHub = liveHub;
+    public StageController(JilaliGateway gateway, JilaliProperties properties) {
+        this.gateway = gateway;
+        this.agoraCipherKey = properties.agoraCipherKey().getBytes(StandardCharsets.US_ASCII);
     }
 
     @Get("/list")
     public StageListResponse list(@QueryValue(defaultValue = "2") int busiType,
                                   @QueryValue @NotBlank String cname) {
-        return liveHub.stageList(busiType, cname);
+        return gateway.stageList(busiType, cname);
     }
 
     @Post("/join")
     public HttpResponse<Void> join(@Valid @Body StageActionRequest request) {
-        liveHub.stageJoin(request);
+        gateway.stageJoin(request);
         return HttpResponse.noContent();
     }
 
     @Post("/quit")
     public HttpResponse<Void> quit(@Valid @Body StageActionRequest request) {
-        liveHub.stageQuit(request);
+        gateway.stageQuit(request);
         return HttpResponse.noContent();
     }
 
     @Post("/raise-hand")
     public HttpResponse<Void> raiseHand(@Valid @Body RaiseHandRequest request) {
-        liveHub.raiseHand(request);
+        gateway.raiseHand(request);
         return HttpResponse.noContent();
     }
 
     @Post("/kick")
     public HttpResponse<Void> kick(@Valid @Body KickRequest request) {
-        liveHub.stageKick(request);
+        gateway.stageKick(request);
         return HttpResponse.noContent();
     }
 
     @Post("/raise-hand/approval")
-    public HttpResponse<Void> raiseHandApproval(
-            @Valid @Body RaiseHandApprovalRequest request) {
-        liveHub.raiseHandApproval(request);
+    public HttpResponse<Void> raiseHandApproval(@Valid @Body RaiseHandApprovalRequest request) {
+        gateway.raiseHandApproval(request);
         return HttpResponse.noContent();
     }
 
     @Post("/invite")
-    public HttpResponse<Void> invite(
-            @Valid @Body StageInviteRequest request) {
-        liveHub.stageInvite(request);
+    public HttpResponse<Void> invite(@Valid @Body StageInviteRequest request) {
+        gateway.stageInvite(request);
         return HttpResponse.noContent();
     }
 
     @Post("/invite/approval")
-    public HttpResponse<Void> inviteApproval(
-            @Valid @Body StageInviteApprovalRequest request) {
-        liveHub.stageInviteApproval(request);
+    public HttpResponse<Void> inviteApproval(@Valid @Body StageInviteApprovalRequest request) {
+        gateway.stageInviteApproval(request);
         return HttpResponse.noContent();
     }
 
     @Post("/device-control")
-    public HttpResponse<Void> deviceControl(
-            @Valid @Body DeviceControlRequest request) {
-        liveHub.deviceControl(request);
+    public HttpResponse<Void> deviceControl(@Valid @Body DeviceControlRequest request) {
+        gateway.deviceControl(request);
         return HttpResponse.noContent();
     }
 
@@ -95,11 +94,10 @@ public class StageController {
      * Plain Agora token with publisher privilege for {@code cname}. The join token from
      * {@code voice_room_info} only carries subscriber rights; clients renew with this token
      * before publishing audio. LiveHub returns it AES-encrypted like the join token, so it
-     * goes through the same {@link AgoraTokenCipher}.
+     * goes through the same token cipher.
      */
     @Get("/publisher-token")
     public PublisherTokenResponse publisherToken(@QueryValue @NotBlank String cname) {
-        PublisherTokenResponse upstream = liveHub.publisherRtcToken(cname);
-        return new PublisherTokenResponse(AgoraTokenCipher.decrypt(upstream.token()));
+        return gateway.publisherToken(cname, agoraCipherKey);
     }
 }

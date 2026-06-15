@@ -1,6 +1,7 @@
 package com.jilali.comment;
 
-import com.jilali.client.JilaliGateway;
+import com.jilali.client.JilaliClient;
+import com.jilali.client.JilaliResponses;
 import com.jilali.comment.dto.CaptionHistoryResponse;
 import com.jilali.comment.dto.CaptionSwitchRequest;
 import com.jilali.comment.dto.CommentListResponse;
@@ -25,10 +26,10 @@ import jakarta.validation.constraints.NotBlank;
 @Controller("/api")
 public class CommentController {
 
-    private final JilaliGateway liveHub;
+    private final JilaliClient client;
 
-    public CommentController(JilaliGateway liveHub) {
-        this.liveHub = liveHub;
+    public CommentController(JilaliClient client) {
+        this.client = client;
     }
 
     // ---- Captions ----
@@ -37,12 +38,12 @@ public class CommentController {
     public CaptionHistoryResponse history(@QueryValue(defaultValue = "2") int busiType,
                                           @QueryValue @NotBlank String cname,
                                           @QueryValue(defaultValue = "20") int pageSize) {
-        return liveHub.captionHistory(busiType, cname, pageSize);
+        return JilaliResponses.unwrap(client.captionHistory(busiType, cname, pageSize));
     }
 
     @Post("/captions/switch")
     public HttpResponse<Void> switchCaption(@Valid @Body CaptionSwitchRequest request) {
-        liveHub.captionSwitch(request);
+        JilaliResponses.unwrap(client.captionSwitch(request));
         return HttpResponse.noContent();
     }
 
@@ -51,11 +52,11 @@ public class CommentController {
     @Get("/comments")
     public CommentListResponse comments(@QueryValue(defaultValue = "2") int busiType,
                                         @QueryValue @NotBlank String cname) {
-        return liveHub.comments(busiType, cname);
+        return JilaliResponses.unwrap(client.comments(busiType, cname));
     }
 
     @Get("/comments/notify")
     public CommentNotifyResponse commentNotify(@QueryValue(defaultValue = "2") int busiType) {
-        return liveHub.commentNotify(busiType);
+        return JilaliResponses.unwrap(client.commentNotify(busiType));
     }
 }

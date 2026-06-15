@@ -1,15 +1,16 @@
 package com.jilali.signin.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.micronaut.serde.annotation.Serdeable;
 
 @Serdeable
 public record RewardItem(
     int id,
-    int gift_id,
+    @JsonProperty("gift_id") int giftId,
     int type,
-    int card_type,
+    @JsonProperty("card_type") int cardType,
     String name,
     int number,
     String icon,
-    String multi_name
+    @JsonProperty("multi_name") String multiName
 ) {}

@@ -1,11 +1,12 @@
 package com.jilali.signin.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.micronaut.serde.annotation.Serdeable;
 import java.util.List;
 
 @Serdeable
 public record VoiceSignPanelResponse(
-    List<SignItem> sign_list,
-    boolean to_day_signed,
-    int consecutive_days
+    @JsonProperty("sign_list") List<SignItem> signList,
+    @JsonProperty("to_day_signed") boolean toDaySigned,
+    @JsonProperty("consecutive_days") int consecutiveDays
 ) {}

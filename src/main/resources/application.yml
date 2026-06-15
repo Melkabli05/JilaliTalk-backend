@@ -82,8 +82,13 @@ jilali:
     - x-request-start
     - user-agent
     - accept-language
+  # HelloTalk server's static Curve25519 public key (hex). Set LIVEHUB_SERVER_PUB_KEY env var.
+  server-pub-key-hex: ${LIVEHUB_SERVER_PUB_KEY:f684f611b895a5d3abc124a20ca2dfd397662318cfd4fd74b80aba478c17ca68}
+  # Device ID sent to the HelloTalk userinfo endpoint. Set LIVEHUB_DEVICE_ID env var.
+  device-id: ${LIVEHUB_DEVICE_ID:4050e6f3ca1a3029ba21a01f4e3f13ba}
+  # AES-128 key for decrypting LiveHub's Agora token payloads (16 ASCII bytes).
+  agora-cipher-key: ${LIVEHUB_AGORA_CIPHER_KEY:15helloTCJTALK20}
 
 jackson:
   serialization:
     writeDatesAsTimestamps: true
-

@@ -1,19 +1,49 @@
 package com.jilali.client;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.jilali.comment.dto.CaptionHistoryResponse;
+import com.jilali.comment.dto.CaptionSwitchRequest;
+import com.jilali.comment.dto.CommentListResponse;
+import com.jilali.comment.dto.CommentNotifyResponse;
 import com.jilali.core.JilaliEnvelope;
+import com.jilali.manager.dto.ApproveManagerRequest;
+import com.jilali.manager.dto.ManagerJudgeResponse;
+import com.jilali.manager.dto.ManagerListResponse;
+import com.jilali.manager.dto.SetManagerRequest;
+import com.jilali.room.dto.BatchQueryRequest;
+import com.jilali.room.dto.BatchQueryResponse;
+import com.jilali.room.dto.CategoryTopicListResponse;
 import com.jilali.room.dto.ChannelListItem;
 import com.jilali.room.dto.ChannelListResponse;
 import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
 import com.jilali.room.dto.EndChannelRequest;
+import com.jilali.room.dto.LanguageGroup;
+import com.jilali.room.dto.RoomLevelConfigResponse;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.signin.dto.ClaimRewardRequest;
 import com.jilali.signin.dto.ClaimTaskRewardRequest;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
+import com.jilali.stage.dto.DeviceControlRequest;
 import com.jilali.stage.dto.KickRequest;
+import com.jilali.stage.dto.PublisherTokenResponse;
+import com.jilali.stage.dto.RaiseHandApprovalRequest;
 import com.jilali.stage.dto.RaiseHandRequest;
+import com.jilali.stage.dto.StageActionRequest;
+import com.jilali.stage.dto.StageInviteApprovalRequest;
+import com.jilali.stage.dto.StageInviteRequest;
+import com.jilali.stage.dto.StageListResponse;
+import com.jilali.user.dto.BatchStatusRequest;
+import com.jilali.user.dto.BatchStatusResponse;
+import com.jilali.user.dto.HeartbeatRequest;
+import com.jilali.user.dto.HostStatus;
+import com.jilali.user.dto.RoomUserListRequest;
+import com.jilali.user.dto.RoomUserListResponse;
+import com.jilali.user.dto.UserStatus;
+import io.micronaut.core.annotation.Nullable;
+import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
@@ -21,6 +51,7 @@ import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.http.client.annotation.Client;
 import io.micronaut.serde.annotation.Serdeable;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -55,7 +86,7 @@ public interface JilaliClient {
 
     @Get("/channel_list_recommend/voice")
     JilaliEnvelope<ChannelListResponse> recommendVoiceRooms(
-            @QueryValue("exclude_cname") @io.micronaut.core.annotation.Nullable String excludeCname,
+            @QueryValue("exclude_cname") @Nullable String excludeCname,
             @QueryValue String scene);
 
     @Get("/channel_list_recommend/live")
@@ -65,13 +96,13 @@ public interface JilaliClient {
     JilaliEnvelope<ChannelListItem> recommendSingleVoiceRoom(@QueryValue("lang_id") int langId);
 
     @Get("/language_group/voice")
-    JilaliEnvelope<java.util.List<com.jilali.room.dto.LanguageGroup>> languageGroupVoice(@QueryValue String scene);
+    JilaliEnvelope<List<LanguageGroup>> languageGroupVoice(@QueryValue String scene);
 
     @Get("/language_group/live")
-    JilaliEnvelope<java.util.List<com.jilali.room.dto.LanguageGroup>> languageGroupLive();
+    JilaliEnvelope<List<LanguageGroup>> languageGroupLive();
 
     @Get("/category_topic_list")
-    JilaliEnvelope<com.jilali.room.dto.CategoryTopicListResponse> categoryTopicList(@QueryValue("busi_type") int busiType);
+    JilaliEnvelope<CategoryTopicListResponse> categoryTopicList(@QueryValue("busi_type") int busiType);
 
     // ---- Info (enveloped) ----
 
@@ -85,7 +116,7 @@ public interface JilaliClient {
     JilaliEnvelope<Map<String, Object>> channelBasicInfo(@QueryValue String cname);
 
     @Post("/batch_query_channel")
-    JilaliEnvelope<com.jilali.room.dto.BatchQueryResponse> batchQueryChannel(@Body com.jilali.room.dto.BatchQueryRequest body);
+    JilaliEnvelope<BatchQueryResponse> batchQueryChannel(@Body BatchQueryRequest body);
 
     @Get("/live_voice/cfg")
     JilaliEnvelope<Map<String, Object>> liveVoiceConfig();
@@ -103,7 +134,7 @@ public interface JilaliClient {
 
     /** Returns a literal {@code null} body when the user has no active channel. */
     @Get("/user_started_channel")
-    @io.micronaut.core.annotation.Nullable
+    @Nullable
     JilaliEnvelope<Map<String, Object>> userStartedChannel(@QueryValue("busi_type") int busiType);
 
     @Get("/user_latest_channel")
@@ -118,15 +149,15 @@ public interface JilaliClient {
     JilaliEnvelope<Object> quitRoom(@Body JoinQuitRequest body);
 
     @Post("/user/heartbeat")
-    JilaliEnvelope<Object> heartbeat(@Body com.jilali.user.dto.HeartbeatRequest body);
+    JilaliEnvelope<Object> heartbeat(@Body HeartbeatRequest body);
 
     @Post("/user/list")
-    JilaliEnvelope<com.jilali.user.dto.RoomUserListResponse> roomUserList(@Body com.jilali.user.dto.RoomUserListRequest body);
+    JilaliEnvelope<RoomUserListResponse> roomUserList(@Body RoomUserListRequest body);
 
     // ---- User status& profile (extended) ----
 
     @Post("/user/status_list")
-    JilaliEnvelope<com.jilali.user.dto.BatchStatusResponse> batchUserStatus(@Body com.jilali.user.dto.BatchStatusRequest body);
+    JilaliEnvelope<BatchStatusResponse> batchUserStatus(@Body BatchStatusRequest body);
 
     @Get("/user_end_page/host")
     JilaliEnvelope<Map<String, Object>> userEndPageHost(@QueryValue("busi_type") int busiType,
@@ -143,14 +174,14 @@ public interface JilaliClient {
     // ---- Stage ----
 
     @Get("/stage/list")
-    JilaliEnvelope<com.jilali.stage.dto.StageListResponse> stageList(@QueryValue("busi_type") int busiType,
+    JilaliEnvelope<StageListResponse> stageList(@QueryValue("busi_type") int busiType,
                                                               @QueryValue String cname);
 
     @Post("/stage/join")
-    JilaliEnvelope<Object> stageJoin(@Body com.jilali.stage.dto.StageActionRequest body);
+    JilaliEnvelope<Object> stageJoin(@Body StageActionRequest body);
 
     @Post("/stage/quit")
-    JilaliEnvelope<Object> stageQuit(@Body com.jilali.stage.dto.StageActionRequest body);
+    JilaliEnvelope<Object> stageQuit(@Body StageActionRequest body);
 
     @Post("/stage/raisehand")
     JilaliEnvelope<Object> raiseHand(@Body RaiseHandRequest body);
@@ -159,52 +190,52 @@ public interface JilaliClient {
     JilaliEnvelope<Object> stageKick(@Body KickRequest body);
 
     @Post("/stage/raisehand_approval")
-    JilaliEnvelope<Object> raiseHandApproval(@Body com.jilali.stage.dto.RaiseHandApprovalRequest body);
+    JilaliEnvelope<Object> raiseHandApproval(@Body RaiseHandApprovalRequest body);
 
     @Post("/stage/invite")
-    JilaliEnvelope<Object> stageInvite(@Body com.jilali.stage.dto.StageInviteRequest body);
+    JilaliEnvelope<Object> stageInvite(@Body StageInviteRequest body);
 
     @Post("/stage/invite_approval")
-    JilaliEnvelope<Object> stageInviteApproval(@Body com.jilali.stage.dto.StageInviteApprovalRequest body);
+    JilaliEnvelope<Object> stageInviteApproval(@Body StageInviteApprovalRequest body);
 
     @Post("/stage/device_control")
-    JilaliEnvelope<Object> deviceControl(@Body com.jilali.stage.dto.DeviceControlRequest body);
+    JilaliEnvelope<Object> deviceControl(@Body DeviceControlRequest body);
 
     @Get("/publisher_rtc_token")
-    JilaliEnvelope<com.jilali.stage.dto.PublisherTokenResponse> publisherRtcToken(@QueryValue String cname);
+    JilaliEnvelope<PublisherTokenResponse> publisherRtcToken(@QueryValue String cname);
 
     // ---- Manager ----
 
     @Get("/user/manager_list")
-    JilaliEnvelope<com.jilali.manager.dto.ManagerListResponse> managerList(@QueryValue String cname,
+    JilaliEnvelope<ManagerListResponse> managerList(@QueryValue String cname,
                                                                     @QueryValue("host_id") long hostId);
 
     @Post("/user/set_managers")
-    JilaliEnvelope<Object> setManagers(@Body com.jilali.manager.dto.SetManagerRequest body);
+    JilaliEnvelope<Object> setManagers(@Body SetManagerRequest body);
 
     @Post("/user/approve_manager")
-    JilaliEnvelope<Object> approveManager(@Body com.jilali.manager.dto.ApproveManagerRequest body);
+    JilaliEnvelope<Object> approveManager(@Body ApproveManagerRequest body);
 
     @Get("/user/manager_judge")
-    JilaliEnvelope<com.jilali.manager.dto.ManagerJudgeResponse> managerJudge(@QueryValue String cname,
+    JilaliEnvelope<ManagerJudgeResponse> managerJudge(@QueryValue String cname,
                                                                       @QueryValue("host_id") long hostId);
 
     // ---- Comments & Captions ----
 
     @Get("/comment")
-    JilaliEnvelope<com.jilali.comment.dto.CommentListResponse> comments(@QueryValue("busi_type") int busiType,
+    JilaliEnvelope<CommentListResponse> comments(@QueryValue("busi_type") int busiType,
                                                                  @QueryValue String cname);
 
     @Get("/comment_notify")
-    JilaliEnvelope<com.jilali.comment.dto.CommentNotifyResponse> commentNotify(@QueryValue("busi_type") int busiType);
+    JilaliEnvelope<CommentNotifyResponse> commentNotify(@QueryValue("busi_type") int busiType);
 
     @Get("/caption/history")
-    JilaliEnvelope<com.jilali.comment.dto.CaptionHistoryResponse> captionHistory(@QueryValue("busi_type") int busiType,
+    JilaliEnvelope<CaptionHistoryResponse> captionHistory(@QueryValue("busi_type") int busiType,
                                                                           @QueryValue String cname,
                                                                           @QueryValue("page_size") int pageSize);
 
     @Post("/caption/switch")
-    JilaliEnvelope<Object> captionSwitch(@Body com.jilali.comment.dto.CaptionSwitchRequest body);
+    JilaliEnvelope<Object> captionSwitch(@Body CaptionSwitchRequest body);
 
     // ---- Sign-in& Tasks ----
 
@@ -228,7 +259,7 @@ public interface JilaliClient {
     JilaliEnvelope<Object> claimRoomLevelReward(@Body ClaimRewardRequest body);
 
     @Get("/voice/room_level/config")
-    JilaliEnvelope<com.jilali.room.dto.RoomLevelConfigResponse> roomLevelConfig(
+    JilaliEnvelope<RoomLevelConfigResponse> roomLevelConfig(
         @QueryValue String cname,
         @QueryValue("host_id") long hostId
     );
@@ -236,23 +267,23 @@ public interface JilaliClient {
     // ---- User status & profile ----
 
     @Get("/user/status")
-    JilaliEnvelope<com.jilali.user.dto.UserStatus> userStatus(@QueryValue("user_id") long userId);
+    JilaliEnvelope<UserStatus> userStatus(@QueryValue("user_id") long userId);
 
     @Get("/host_status")
-    JilaliEnvelope<com.jilali.user.dto.HostStatus> hostStatus();
+    JilaliEnvelope<HostStatus> hostStatus();
 
     /**
      * Profile is served as a binary {@code bin/cc2018} payload, NOT JSON. We return the raw bytes
      * and let the controller forward them with the upstream content type rather than attempting a
      * deserialization that would always fail.
      */
-    @Get(value = "/user/profile", processes = io.micronaut.http.MediaType.APPLICATION_OCTET_STREAM)
+    @Get(value = "/user/profile", processes = MediaType.APPLICATION_OCTET_STREAM)
     byte[] userProfile(@QueryValue("busi_type") int busiType,
                        @QueryValue String cname,
                        @QueryValue("user_id") long userId);
 
     @Serdeable
-    record JoinQuitRequest(String cname, int busi_type) {
+    record JoinQuitRequest(String cname, @JsonProperty("busi_type") int busiType) {
     }
 
 }

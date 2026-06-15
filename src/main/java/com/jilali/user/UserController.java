@@ -1,17 +1,29 @@
 package com.jilali.user;
 
+import com.jilali.client.JilaliClient;
 import com.jilali.client.JilaliGateway;
+import com.jilali.client.JilaliResponses;
+import com.jilali.user.dto.BatchStatusRequest;
+import com.jilali.user.dto.BatchStatusResponse;
+import com.jilali.user.dto.HeartbeatRequest;
 import com.jilali.user.dto.HostStatus;
+import com.jilali.user.dto.RoomUserListRequest;
+import com.jilali.user.dto.RoomUserListResponse;
 import com.jilali.user.dto.UserInfo;
 import com.jilali.user.dto.UserStatus;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.MediaType;
-import io.micronaut.scheduling.annotation.ExecuteOn;
+import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
-import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
+import io.micronaut.scheduling.TaskExecutors;
+import io.micronaut.scheduling.annotation.ExecuteOn;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+
+import java.util.Map;
 
 /**
  * User room actions (join/quit) and status/profile reads. The profile endpoint is the one place
@@ -22,84 +34,82 @@ import io.micronaut.http.annotation.QueryValue;
 @Controller("/api/users")
 public class UserController {
 
-    private final JilaliGateway liveHub;
+    private final JilaliGateway gateway;
 
-    public UserController(JilaliGateway liveHub) {
-        this.liveHub = liveHub;
+    public UserController(JilaliGateway gateway) {
+        this.gateway = gateway;
     }
 
     @Post("/rooms/{cname}/join")
-    public HttpResponse<Void> join(String cname, @QueryValue(defaultValue = "2") int busiType) {
-        liveHub.joinRoom(cname, busiType);
+    public HttpResponse<Void> join(@NotBlank String cname, @QueryValue(defaultValue = "2") int busiType) {
+        JilaliResponses.unwrap(gateway.client().joinRoom(new JilaliClient.JoinQuitRequest(cname, busiType)));
         return HttpResponse.noContent();
     }
 
     @Post("/rooms/{cname}/quit")
-    public HttpResponse<Void> quit(String cname, @QueryValue(defaultValue = "2") int busiType) {
-        liveHub.quitRoom(cname, busiType);
+    public HttpResponse<Void> quit(@NotBlank String cname, @QueryValue(defaultValue = "2") int busiType) {
+        JilaliResponses.unwrap(gateway.client().quitRoom(new JilaliClient.JoinQuitRequest(cname, busiType)));
         return HttpResponse.noContent();
     }
 
     @Post("/heartbeat")
-    public HttpResponse<Void> heartbeat(@jakarta.validation.Valid @io.micronaut.http.annotation.Body com.jilali.user.dto.HeartbeatRequest request) {
-        liveHub.heartbeat(request);
+    public HttpResponse<Void> heartbeat(@Valid @Body HeartbeatRequest request) {
+        JilaliResponses.unwrap(gateway.client().heartbeat(request));
         return HttpResponse.noContent();
     }
 
     @Post("/rooms/list")
-    public com.jilali.user.dto.RoomUserListResponse roomUsers(
-            @jakarta.validation.Valid @io.micronaut.http.annotation.Body com.jilali.user.dto.RoomUserListRequest request) {
-        return liveHub.roomUserList(request);
+    public RoomUserListResponse roomUsers(@Valid @Body RoomUserListRequest request) {
+        return JilaliResponses.unwrap(gateway.client().roomUserList(request));
     }
 
     @Post("/status/batch")
-    public com.jilali.user.dto.BatchStatusResponse batchStatus(
-            @jakarta.validation.Valid @io.micronaut.http.annotation.Body com.jilali.user.dto.BatchStatusRequest request) {
-        return liveHub.batchUserStatus(request);
+    public BatchStatusResponse batchStatus(@Valid @Body BatchStatusRequest request) {
+        return JilaliResponses.unwrap(gateway.client().batchUserStatus(request));
     }
 
     @Get("/end-page/host")
-    public java.util.Map<String, Object> endPageHost(
+    public Map<String, Object> endPageHost(
             @QueryValue(defaultValue = "2") int busiType,
             @QueryValue String cname,
             @QueryValue(value = "contributeListType", defaultValue = "topn") String contributeListType) {
-        return liveHub.userEndPageHost(busiType, cname, contributeListType);
+        return JilaliResponses.unwrap(gateway.client().userEndPageHost(busiType, cname, contributeListType));
     }
 
     @Get("/end-page/audience")
-    public java.util.Map<String, Object> endPageAudience(
+    public Map<String, Object> endPageAudience(
             @QueryValue(defaultValue = "2") int busiType,
             @QueryValue String cname) {
-        return liveHub.userEndPageAudience(busiType, cname);
+        return JilaliResponses.unwrap(gateway.client().userEndPageAudience(busiType, cname));
     }
 
     @Get("/record/live")
-    public java.util.Map<String, Object> recordLive(
+    public Map<String, Object> recordLive(
             @QueryValue(defaultValue = "8") int limit,
             @QueryValue(defaultValue = "0") int offset) {
-        return liveHub.userRecordLive(limit, offset);
+        return JilaliResponses.unwrap(gateway.client().userRecordLive(limit, offset));
     }
 
     @Get("/{userId}/status")
     public UserStatus status(long userId) {
-        return liveHub.userStatus(userId);
+        return JilaliResponses.unwrap(gateway.client().userStatus(userId));
     }
 
     @Get("/host-status")
     public HostStatus hostStatus() {
-        return liveHub.hostStatus();
+        return JilaliResponses.unwrap(gateway.client().hostStatus());
     }
 
     @Get(value = "/{userId}/profile", produces = MediaType.APPLICATION_OCTET_STREAM)
     public HttpResponse<byte[]> profile(long userId,
                                         @QueryValue String cname,
                                         @QueryValue(defaultValue = "2") int busiType) {
-        var bytes = liveHub.userProfile(busiType, cname, userId);
+        var bytes = gateway.client().userProfile(busiType, cname, userId);
         return HttpResponse.ok(bytes).contentType("bin/cc2018");
     }
 
     @Get("/info")
     public UserInfo userInfo(@QueryValue long userId) {
-        return liveHub.userInfo(userId);
+        return gateway.userInfo(userId);
     }
 }

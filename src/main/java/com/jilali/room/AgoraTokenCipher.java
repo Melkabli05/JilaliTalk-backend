@@ -6,25 +6,25 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * LiveHub returns the Agora RTC token in {@code rtc_info.token} AES-encrypted, not as a plain
- * Agora token. The browser SDK needs the decrypted value: a plain Agora token embeds the App ID
- * after its {@code 006}/{@code 007} version prefix, and Agora's gateway extracts the App ID from
- * that token. Hand it the still-encrypted blob and the gateway can't find an App ID, which surfaces
- * as {@code CAN_NOT_GET_GATEWAY_SERVER: invalid vendor key, can not find appid}.
+ * Agora token. The browser SDK needs the plain token (it carries the App ID after its
+ * {@code 006}/{@code 007} version prefix). Hand it the still-encrypted blob and the gateway
+ * can't find an App ID, which surfaces as {@code CAN_NOT_GET_GATEWAY_SERVER: invalid vendor key,
+ * can not find appid}.
  * <p>
- * The scheme matches the original HelloTalk web client: AES-128 in ECB mode with no padding, a
- * fixed key, and a hex-encoded ciphertext. Tokens that already start with {@code 006}/{@code 007}
- * are plain and pass through untouched.
+ * The scheme matches the original HelloTalk web client: AES-128 in ECB mode with no padding,
+ * a fixed key, and a hex-encoded ciphertext. Tokens that already start with {@code 006}/
+ * {@code 007} are plain and pass through untouched.
  */
 public final class AgoraTokenCipher {
-
-    // ASCII "15helloTCJTALK20" — the 16-byte AES key used by the upstream.
-    private static final byte[] KEY = "15helloTCJTALK20".getBytes(StandardCharsets.US_ASCII);
 
     private AgoraTokenCipher() {
     }
 
-    /** Returns the plain Agora token, or the input unchanged if it is already plain or undecryptable. */
-    public static String decrypt(String token) {
+    /**
+     * Decrypts using the key from config ({@code jilali.agora-cipher-key}).
+     * @see #decrypt(String, byte[])
+     */
+    public static String decrypt(String token, byte[] key) {
         if (token == null || token.isEmpty()) {
             return token;
         }
@@ -34,7 +34,7 @@ public final class AgoraTokenCipher {
         try {
             byte[] ciphertext = hexToBytes(token);
             Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
-            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(KEY, "AES"));
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"));
             byte[] plain = cipher.doFinal(ciphertext);
             // NoPadding leaves trailing NUL bytes from the upstream's zero-padding; strip them.
             int end = plain.length;

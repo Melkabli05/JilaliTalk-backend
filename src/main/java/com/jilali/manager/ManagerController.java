@@ -1,6 +1,7 @@
 package com.jilali.manager;
 
-import com.jilali.client.JilaliGateway;
+import com.jilali.client.JilaliClient;
+import com.jilali.client.JilaliResponses;
 import com.jilali.manager.dto.ApproveManagerRequest;
 import com.jilali.manager.dto.ManagerJudgeResponse;
 import com.jilali.manager.dto.ManagerListResponse;
@@ -20,28 +21,28 @@ import jakarta.validation.constraints.NotBlank;
 @Controller("/api/managers")
 public class ManagerController {
 
-    private final JilaliGateway liveHub;
+    private final JilaliClient client;
 
-    public ManagerController(JilaliGateway liveHub) {
-        this.liveHub = liveHub;
+    public ManagerController(JilaliClient client) {
+        this.client = client;
     }
 
     @Get
     public ManagerListResponse list(@QueryValue @NotBlank String cname,
                                     @QueryValue("host_id") long hostId) {
-        return liveHub.managerList(cname, hostId);
+        return JilaliResponses.unwrap(client.managerList(cname, hostId));
     }
 
     @Post
     public HttpResponse<Void> set(@Valid @Body SetManagerRequest request) {
-        liveHub.setManagers(request);
+        JilaliResponses.unwrap(client.setManagers(request));
         return HttpResponse.noContent();
     }
 
     @Post("/approve")
     public HttpResponse<Void> approve(
             @Valid @Body ApproveManagerRequest request) {
-        liveHub.approveManager(request);
+        JilaliResponses.unwrap(client.approveManager(request));
         return HttpResponse.noContent();
     }
 
@@ -49,6 +50,6 @@ public class ManagerController {
     public ManagerJudgeResponse judge(
             @QueryValue @NotBlank String cname,
             @QueryValue("host_id") long hostId) {
-        return liveHub.managerJudge(cname, hostId);
+        return JilaliResponses.unwrap(client.managerJudge(cname, hostId));
     }
 }

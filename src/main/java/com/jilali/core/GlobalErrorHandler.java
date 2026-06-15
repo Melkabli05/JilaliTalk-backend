@@ -61,4 +61,25 @@ public final class GlobalErrorHandler {
                     .body(body);
         }
     }
+
+    @Singleton
+    @Produces(PROBLEM_JSON)
+    @Requires(classes = {Exception.class, ExceptionHandler.class})
+    public static final class FallbackExceptionHandler
+            implements ExceptionHandler<Exception, HttpResponse<ApiError>> {
+
+        @Override
+        public HttpResponse<ApiError> handle(HttpRequest request, Exception ex) {
+            // Catch-all for any unhandled exception — produces a consistent problem+json 500.
+            // This prevents raw 500 bodies from leaking to the frontend.
+            var body = ApiError.of(
+                    HttpStatus.INTERNAL_SERVER_ERROR.getCode(),
+                    "Internal server error",
+                    ex.getMessage() != null ? ex.getMessage() : "Unexpected error",
+                    null);
+            return HttpResponse.<ApiError>status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .contentType(MediaType.of(PROBLEM_JSON))
+                    .body(body);
+        }
+    }
 }
