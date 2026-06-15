@@ -27,8 +27,6 @@ import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-
 /**
  * The seam between our application and Jilali. Only the two methods that perform real work
  * beyond envelope unwrapping live here:
@@ -142,7 +140,8 @@ public class JilaliGateway {
         try {
             responseBytes = blockingClient.retrieve(httpRequest, byte[].class);
         } catch (HttpClientResponseException e) {
-            log.error("userInfo upstream error: status={}", e.getStatus());
+            String body = e.getResponse().getBody(String.class).orElse("<no body>");
+            log.error("userInfo upstream error: status={}, body={}", e.getStatus(), body);
             throw new JilaliException(1, "Upstream userinfo failed: " + e.getStatus(), HttpStatus.BAD_GATEWAY);
         }
         if (responseBytes == null || responseBytes.length == 0) {
