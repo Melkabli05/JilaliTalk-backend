@@ -4,6 +4,11 @@
             <pattern>%cyan(%d{HH:mm:ss.SSS}) %gray([%thread]) %highlight(%-5level) %magenta(%logger{36}) - %msg%n</pattern>
         </encoder>
     </appender>
+    <!-- Surface upstream HTTP errors and deserialization failures -->
+    <logger name="io.micronaut.http.client" level="DEBUG"/>
+    <logger name="io.micronaut.serde" level="WARN"/>
+    <logger name="com.jilali" level="DEBUG"/>
+
     <root level="info">
         <appender-ref ref="STDOUT"/>
     </root>

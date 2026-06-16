@@ -1,5 +1,7 @@
 package com.jilali.room.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
@@ -14,6 +16,7 @@ public final class VoiceRoomInfoObjects {
 
     // ---- channel_info sub-objects ----
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record PinnedComment(
             @JsonProperty("_id") String id,
@@ -46,6 +49,7 @@ public final class VoiceRoomInfoObjects {
             @JsonProperty("comment_closed_friend") @Nullable String commentClosedFriend,
             @JsonProperty("user_extra_info") @Nullable Map<String, Object> userExtraInfo) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record SayGuessInfo(
             @JsonProperty("session_id") @Nullable String sessionId,
@@ -67,6 +71,7 @@ public final class VoiceRoomInfoObjects {
             @JsonProperty("user_answers") List<Object> userAnswers,
             @Nullable List<Question> questions) {
 
+        @JsonIgnoreProperties(ignoreUnknown = true)
         @Serdeable
         public record Question(
                 @JsonProperty("question_index") int questionIndex,
@@ -81,6 +86,7 @@ public final class VoiceRoomInfoObjects {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record WhiteboardInfo(
             @JsonProperty("whiteboard_enabled") boolean whiteboardEnabled,
@@ -89,6 +95,7 @@ public final class VoiceRoomInfoObjects {
             @JsonProperty("whiteboard_uuid") @Nullable String whiteboardUuid,
             @Nullable String token) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record WhiteboardSettings(
             @JsonProperty("dnd_hide_welcome") boolean dndHideWelcome,
@@ -98,6 +105,7 @@ public final class VoiceRoomInfoObjects {
 
     // ---- top-level room fields ----
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record RoomBackground(
             @JsonProperty("background_id") int backgroundId,
@@ -112,6 +120,7 @@ public final class VoiceRoomInfoObjects {
             @JsonProperty("background_animal_type") int backgroundAnimalType,
             @JsonProperty("background_animal_url") @Nullable String backgroundAnimalUrl) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record CaptionInfo(
             @JsonProperty("room_caption_status") int roomCaptionStatus,
@@ -126,18 +135,21 @@ public final class VoiceRoomInfoObjects {
             @JsonProperty("current_translate_lang") @Nullable TranslateLang currentTranslateLang,
             @JsonProperty("max_show_cnt") int maxShowCnt) {
 
+        @JsonIgnoreProperties(ignoreUnknown = true)
         @Serdeable
         public record TranslateLang(
                 @JsonProperty("lang_id") int langId,
                 @JsonProperty("stt_key") @Nullable String sttKey) {}
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record UserPaidExposureData(
             @JsonProperty("current_exposures") int currentExposures,
             @JsonProperty("can_purchase_more") boolean canPurchaseMore,
             @JsonProperty("remain_exposures") int remainExposures) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record QuickChatInfo(
             @JsonProperty("host_collapsed") boolean hostCollapsed,

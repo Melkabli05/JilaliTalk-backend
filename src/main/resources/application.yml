@@ -50,6 +50,8 @@ micronaut:
           enabled: false
   serde:
     enabled: true
+    deserialization:
+      ignore-unknown: true
   openapi:
     views:
       spec: swagger-ui.enabled=true
@@ -92,7 +94,13 @@ jilali:
   device-id: ${LIVEHUB_DEVICE_ID:4050e6f3ca1a3029ba21a01f4e3f13ba}
   # AES-128 key for decrypting LiveHub's Agora token payloads (16 ASCII bytes).
   agora-cipher-key: ${LIVEHUB_AGORA_CIPHER_KEY:15helloTCJTALK20}
+  # HT IM login metadata — override with env vars in production.
+  ht-im-operator: ${HT_IM_OPERATOR:unknown}
+  ht-im-country: ${HT_IM_COUNTRY:US}
+  device-model: ${HT_DEVICE_MODEL:samsung SM-G991B}
 
 jackson:
   serialization:
     writeDatesAsTimestamps: true
+  deserialization:
+    FAIL_ON_UNKNOWN_PROPERTIES: false

@@ -9,6 +9,8 @@ import io.micronaut.http.annotation.Produces;
 import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import io.micronaut.http.server.exceptions.ExceptionHandler;
 import jakarta.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Translates failures into RFC 9457-shaped {@code application/problem+json} bodies, so our
@@ -29,8 +31,14 @@ public final class GlobalErrorHandler {
     public static final class JilaliExceptionHandler
             implements ExceptionHandler<JilaliException, HttpResponse<ApiError>> {
 
+        private static final Logger log = LoggerFactory.getLogger(
+                JilaliExceptionHandler.class);
+
         @Override
         public HttpResponse<ApiError> handle(HttpRequest request, JilaliException ex) {
+            log.warn("[jlhub] {} {} → JilaliException code={} msg={}",
+                    request.getMethod(), request.getPath(),
+                    ex.upstreamCode(), ex.getMessage());
             var body = ApiError.of(
                     ex.status().getCode(),
                     "Upstream Jilali error",
@@ -48,9 +56,18 @@ public final class GlobalErrorHandler {
     public static final class UpstreamTransportExceptionHandler
             implements ExceptionHandler<HttpClientResponseException, HttpResponse<ApiError>> {
 
+        private static final Logger log = LoggerFactory.getLogger(
+                UpstreamTransportExceptionHandler.class);
+
         @Override
         public HttpResponse<ApiError> handle(HttpRequest request, HttpClientResponseException ex) {
-            // Transport-level upstream failure (timeout, 5xx, connection refused) -> 502.
+            String upstreamBody = ex.getResponse() != null
+                    ? ex.getResponse().getBody(String.class).orElse("<empty>")
+                    : "<no response>";
+            log.warn("[jlhub] {} {} {} → upstream body: {}",
+                    request.getMethod(), request.getPath(),
+                    ex.getStatus(), upstreamBody);
+
             var body = ApiError.of(
                     HttpStatus.BAD_GATEWAY.getCode(),
                     "Jilali unreachable",

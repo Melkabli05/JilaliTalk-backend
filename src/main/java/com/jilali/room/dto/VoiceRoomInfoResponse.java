@@ -1,5 +1,6 @@
 package com.jilali.room.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.jilali.room.dto.VoiceRoomInfoObjects.CaptionInfo;
 import com.jilali.room.dto.VoiceRoomInfoObjects.PinnedComment;
@@ -14,6 +15,7 @@ import io.micronaut.serde.annotation.Serdeable;
 
 import java.util.List;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Serdeable
 public record VoiceRoomInfoResponse(
         @JsonProperty("host_info") @Nullable HostInfo hostInfo,
@@ -58,12 +60,14 @@ public record VoiceRoomInfoResponse(
                 luckBag, roomBackground, captionInfo, rtcInfoOuter, userPaidExposureData, quickChatInfo);
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record RtcInfoOuter(
             @JsonProperty("app_id") @Nullable String appId,
             @Nullable String token,
             @JsonProperty("engine") @Nullable String engine) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record HostInfo(
             @JsonProperty("user_id") long userId,
@@ -71,6 +75,7 @@ public record VoiceRoomInfoResponse(
             @JsonProperty("is_teacher") boolean isTeacher,
             @JsonProperty("is_expert") boolean isExpert) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record ReqUserInfo(
             @JsonProperty("user_id") long userId,
@@ -90,6 +95,7 @@ public record VoiceRoomInfoResponse(
             @JsonProperty("join_dur_expired_at") long joinDurExpiredAt,
             @JsonProperty("lucky_bag_icon") @Nullable String luckyBagIcon) {
 
+        @JsonIgnoreProperties(ignoreUnknown = true)
         @Serdeable
         public record Ripple(
                 @JsonProperty("ripple_id") long rippleId,
@@ -98,6 +104,7 @@ public record VoiceRoomInfoResponse(
                 @JsonProperty("ripple_animal_url") @Nullable String rippleAnimalUrl) {}
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record ChannelInfo(
             String name,
@@ -129,12 +136,14 @@ public record VoiceRoomInfoResponse(
             @JsonProperty("whiteboard_settings") @Nullable WhiteboardSettings whiteboardSettings,
             @JsonProperty("rtc_info") @Nullable RtcInfo rtcInfo) {
 
+        @JsonIgnoreProperties(ignoreUnknown = true)
         @Serdeable
         public record RtcInfo(
                 @JsonProperty("app_id") @Nullable String appId,
                 @Nullable String token,
                 @JsonProperty("engine") @Nullable String engine) {}
 
+        @JsonIgnoreProperties(ignoreUnknown = true)
         @Serdeable
         public record CategoryTopicTag(
                 @JsonProperty("category_id") int categoryId,
@@ -147,6 +156,7 @@ public record VoiceRoomInfoResponse(
                 @JsonProperty("topic_name") @Nullable String topicName) {}
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record ConfigInfo(
             @JsonProperty("heartbeat_second") int heartbeatSecond,
@@ -160,6 +170,7 @@ public record VoiceRoomInfoResponse(
             @JsonProperty("comment_admin_tag_show") boolean commentAdminTagShow,
             @JsonProperty("stage_list_admin_tag_show") boolean stageListAdminTagShow) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record RoomLevelInfo(
             int level,
@@ -169,6 +180,7 @@ public record VoiceRoomInfoResponse(
             @JsonProperty("level_rtl_icon_v2") @Nullable String levelRtlIconV2,
             @JsonProperty("label_font_color") @Nullable String labelFontColor) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
     public record ManagerInfo(
             @JsonProperty("user_id") long userId,
