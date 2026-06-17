@@ -46,9 +46,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Thread-safe: all mutable state is in concurrent collections.
  */
-@Singleton
-@ServerWebSocket("/ws/ht/{cname}")
-@ExecuteOn(TaskExecutors.BLOCKING)
+// Disabled: the Angular frontend now connects directly to LiveHub
+// (see core/realtime/ht-socket.service.ts) instead of through this bridge.
+// Re-enable by uncommenting the three annotations below.
+// @Singleton
+// @ServerWebSocket("/ws/ht/{cname}")
+// @ExecuteOn(TaskExecutors.BLOCKING)
 public class HtBridgeWebSocket {
 
     private static final Logger log = LoggerFactory.getLogger(HtBridgeWebSocket.class);
@@ -96,6 +99,11 @@ public class HtBridgeWebSocket {
         });
 
         log.info("HT bridge: frontend opened cname='{}' userId='{}' total={}", cname, userId, subscriberCount(cname));
+    }
+
+    @OnMessage
+    public void onMessage(String cname, String message) {
+        log.trace("HT bridge: ignoring inbound frontend message cname='{}': {}", cname, message);
     }
 
     @OnClose
