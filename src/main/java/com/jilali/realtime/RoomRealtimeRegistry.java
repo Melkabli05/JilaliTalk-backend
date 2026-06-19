@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  * subscribers remain.
  */
 @Singleton
-public class RoomRealtimeRegistry {
+public class RoomRealtimeRegistry implements RoomEventSource {
 
     private static final Logger log = LoggerFactory.getLogger(RoomRealtimeRegistry.class);
     private static final String LIVEHUB_URL = "wss://uploadprocn.hellotalk8.com/livehub/ws/conn";

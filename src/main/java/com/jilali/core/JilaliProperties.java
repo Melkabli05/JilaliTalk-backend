@@ -16,10 +16,7 @@ public record JilaliProperties(
         @Nullable String agoraCipherKey,
         @Nullable String serverPubKeyHex,
         @Nullable String deviceId,
-        @Nullable String htServerUrl,
-        @Nullable String htImOperator,
-        @Nullable String htImCountry,
-        @Nullable String deviceModel) {
+        @Nullable List<String> allowedWebSocketOrigins) {
 
     /** Stable fallback device ID generated once per process start. */
     private static final String FALLBACK_DEVICE_ID = UUID.randomUUID().toString().replace("-", "");
@@ -31,25 +28,11 @@ public record JilaliProperties(
         serverPubKeyHex  = serverPubKeyHex  != null ? serverPubKeyHex  : "";
         deviceId         = deviceId         != null && !deviceId.isBlank()
             ? deviceId : FALLBACK_DEVICE_ID;
-        htServerUrl      = htServerUrl != null && !htServerUrl.isBlank()
-            ? htServerUrl : "wss://uploadprocn.hellotalk8.com/livehub/ws/conn";
-        htImOperator     = htImOperator     != null ? htImOperator     : "unknown";
-        htImCountry      = htImCountry      != null ? htImCountry      : "US";
-        deviceModel      = deviceModel      != null ? deviceModel      : "samsung SM-G991B";
+        allowedWebSocketOrigins = allowedWebSocketOrigins != null
+            ? List.copyOf(allowedWebSocketOrigins)
+            : List.of("http://localhost:4200", "http://localhost:4201");
     }
 
     /** 16-byte AES key for decrypting LiveHub's Agora token payloads. */
     public String agoraCipherKey() { return agoraCipherKey; }
-
-    /** LiveHub WebSocket base URL. */
-    public String htServerUrl() { return htServerUrl; }
-
-    /** Mobile operator string included in the HT IM login packet. */
-    public String htImOperator() { return htImOperator; }
-
-    /** Operator country code included in the HT IM login packet. */
-    public String htImCountry() { return htImCountry; }
-
-    /** Device model string included in the HT IM login packet ({@code device_detail} field). */
-    public String deviceModel() { return deviceModel; }
 }
