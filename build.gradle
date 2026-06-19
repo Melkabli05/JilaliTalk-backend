@@ -18,11 +18,12 @@ dependencies {
 
     implementation 'io.micronaut:micronaut-http-server-netty'
     implementation 'io.micronaut:micronaut-http-client'
-    implementation 'io.micronaut:micronaut-websocket'
     implementation 'io.micronaut.serde:micronaut-serde-jackson'
+    implementation 'io.micronaut:micronaut-jackson-databind'
     implementation 'io.micronaut.validation:micronaut-validation'
     implementation 'io.micronaut.openapi:micronaut-openapi'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.79'
+    implementation 'io.projectreactor:reactor-core'
 
     runtimeOnly 'ch.qos.logback:logback-classic'
     runtimeOnly 'org.yaml:snakeyaml'
