@@ -1,0 +1,5 @@
+jilali:
+  allowed-web-socket-origins:
+    - "http://localhost:4200"
+    - "http://localhost:4201"
+    - "http://localhost:8080"
