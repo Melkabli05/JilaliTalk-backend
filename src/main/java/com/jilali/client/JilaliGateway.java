@@ -17,22 +17,31 @@ import com.jilali.stage.dto.StageListResponse;
 import com.jilali.user.dto.UserInfo;
 import com.jilali.user.dto.UserInfoRequest;
 import com.jilali.user.dto.UserInfoResponse;
+import com.jilali.vip.dto.UseVipExperienceCardRequest;
+import com.jilali.vip.dto.VipExperienceCard;
+import com.jilali.vip.dto.VipExperienceCardRecordsRequest;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.client.BlockingHttpClient;
 import io.micronaut.http.client.HttpClient;
 import io.micronaut.http.client.annotation.Client;
 import io.micronaut.http.client.exceptions.HttpClientResponseException;
+import io.micronaut.http.context.ServerRequestContext;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.regex.Pattern;
+
 /**
- * The seam between our application and Jilali. Only the two methods that perform real work
- * beyond envelope unwrapping live here:
+ * The seam between our application and Jilali. Only the methods that perform real work beyond
+ * envelope unwrapping live here:
  * <ul>
  *   <li>{@code userInfo} — encrypted ht/encbin call with Curve25519 key exchange</li>
  *   <li>{@code publisherToken} — AES decryption of the upstream Agora token</li>
+ *   <li>{@code claimVipTrial} — finds and activates an unused 24h VIP-trial card perk</li>
  * </ul>
  * All other endpoints are plain pass-throughs and are called directly from controllers via
  * {@link JilaliClient} + {@link JilaliResponses#unwrap}.
@@ -42,12 +51,22 @@ public class JilaliGateway {
 
     private static final Logger log = LoggerFactory.getLogger(JilaliGateway.class);
 
+    /** scene_id/feature_id identifying the 24h VIP trial perk on a VIP experience card. */
+    private static final String VIP_TRIAL_SCENE_ID = "30000";
+    private static final String VIP_TRIAL_FEATURE_ID = "00001";
+    private static final String VIP_TRIAL_CARD_VERSION = "v1";
+
+    private static final Pattern UID_CLAIM_PATTERN = Pattern.compile("\"uid\"\\s*:\\s*(\\d+)");
+
     private final JilaliClient client;
+    private final VipExperienceCardClient vipClient;
     private final HttpClient httpClient;
     private final JilaliProperties properties;
 
-    public JilaliGateway(JilaliClient client, @Client("jlhub") HttpClient jlhubClient, JilaliProperties properties) {
+    public JilaliGateway(JilaliClient client, VipExperienceCardClient vipClient,
+                          @Client("jlhub") HttpClient jlhubClient, JilaliProperties properties) {
         this.client = client;
+        this.vipClient = vipClient;
         this.httpClient = jlhubClient;
         this.properties = properties;
     }
@@ -93,6 +112,80 @@ public class JilaliGateway {
 
     public void deviceControl(DeviceControlRequest body) {
         JilaliResponses.unwrap(client.deviceControl(body));
+    }
+
+    /**
+     * Finds an unused 24h-VIP-trial perk on a card the current user owns and activates it. This
+     * is the "Claim" action behind the watch-limit dialog (mirrors old_hellotalk's
+     * {@code getVip24h()}) — called explicitly by the user, not silently, since it's the frontend
+     * that decides whether to claim, join as a ghost listener, or leave (see
+     * {@code BaseRoomStore.handleWatchLimitReached}).
+     *
+     * @return {@code true} if a trial was found and claimed, {@code false} if the user has none left.
+     */
+    public boolean claimVipTrial() {
+        Long userId = currentUserId();
+        if (userId == null) {
+            return false;
+        }
+        var records = JilaliResponses.unwrap(
+            vipClient.queryUserRecord(new VipExperienceCardRecordsRequest(userId, true, true)));
+        if (records == null) {
+            return false;
+        }
+        var card = records.cards().stream()
+            .filter(JilaliGateway::ownsUnusedTrial)
+            .findFirst();
+        if (card.isEmpty()) {
+            return false;
+        }
+        JilaliResponses.unwrap(vipClient.useCard(new UseVipExperienceCardRequest(
+            card.get().id(), VIP_TRIAL_FEATURE_ID, VIP_TRIAL_SCENE_ID, userId, VIP_TRIAL_CARD_VERSION)));
+        log.info("Auto-claimed 24h VIP trial for user {}", userId);
+        return true;
+    }
+
+    static boolean ownsUnusedTrial(VipExperienceCard card) {
+        var features = card.detail() == null ? null : card.detail().cardFeatures();
+        boolean hasTrial = features != null && features.stream()
+            .anyMatch(f -> VIP_TRIAL_SCENE_ID.equals(f.sceneId()) && VIP_TRIAL_FEATURE_ID.equals(f.featureId()));
+        if (!hasTrial) {
+            return false;
+        }
+        var used = card.usedFeatures();
+        return used == null || used.stream()
+            .noneMatch(u -> VIP_TRIAL_SCENE_ID.equals(u.sceneId()) && VIP_TRIAL_FEATURE_ID.equals(u.featureId()));
+    }
+
+    /**
+     * Resolves the calling user's id from the JWT actually in effect for upstream calls — the
+     * inbound {@code Authorization} header if the frontend sent one, else the same default token
+     * {@code DefaultHeadersClientFilter} falls back to. The frontend doesn't track its own user id
+     * before a room is joined (it only learns it from {@code voice_room_info}'s response), and
+     * doesn't send an {@code x-ht-uid} header at all yet — so the JWT already carrying this
+     * request's identity is the only reliable source.
+     */
+    private Long currentUserId() {
+        var inbound = ServerRequestContext.currentRequest().orElse(null);
+        String header = inbound == null ? null : inbound.getHeaders().get("authorization");
+        String token = header != null && !header.isBlank() ? header : "Bearer " + properties.defaultAuthToken();
+        return decodeUidClaim(token);
+    }
+
+    /** Extracts the {@code uid} claim from a {@code Bearer <jwt>} string without verifying its signature. */
+    private static Long decodeUidClaim(String bearerToken) {
+        String jwt = bearerToken.replaceFirst("(?i)^Bearer\\s+", "");
+        String[] parts = jwt.split("\\.");
+        if (parts.length < 2) {
+            return null;
+        }
+        try {
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            var matcher = UID_CLAIM_PATTERN.matcher(payload);
+            return matcher.find() ? Long.parseLong(matcher.group(1)) : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /**

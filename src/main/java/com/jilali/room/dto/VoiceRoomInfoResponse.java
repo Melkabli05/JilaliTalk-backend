@@ -3,6 +3,7 @@ package com.jilali.room.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.jilali.room.dto.VoiceRoomInfoObjects.CaptionInfo;
+import com.jilali.room.dto.VoiceRoomInfoObjects.LuckBag;
 import com.jilali.room.dto.VoiceRoomInfoObjects.PinnedComment;
 import com.jilali.room.dto.VoiceRoomInfoObjects.QuickChatInfo;
 import com.jilali.room.dto.VoiceRoomInfoObjects.RoomBackground;
@@ -24,7 +25,7 @@ public record VoiceRoomInfoResponse(
         @JsonProperty("config_info") @Nullable ConfigInfo configInfo,
         @JsonProperty("room_level_info") @Nullable RoomLevelInfo roomLevelInfo,
         @Nullable List<ManagerInfo> managers,
-        @JsonProperty("luck_bag") @Nullable String luckBag,
+        @JsonProperty("luck_bag") @Nullable LuckBag luckBag,
         @JsonProperty("room_background") @Nullable RoomBackground roomBackground,
         @JsonProperty("caption_info") @Nullable CaptionInfo captionInfo,
         @JsonProperty("rtc_info") @Nullable RtcInfoOuter rtcInfoOuter,

@@ -19,6 +19,15 @@ import java.util.List;
     @JsonSubTypes.Type(value = RoomRealtimeEvent.Gift.class,               name = "gift"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.StageDeviceControl.class, name = "stage_device_control"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.ModInvite.class,          name = "mod_invite"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.WhiteboardActivated.class, name = "whiteboard_activated"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.WhiteboardDeactivated.class, name = "whiteboard_deactivated"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.MicOpened.class,          name = "mic_opened"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.MicClosed.class,          name = "mic_closed"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.RoomKick.class,           name = "room_kick"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.StageKick.class,           name = "stage_kick"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.ModAccepted.class,         name = "mod_accepted"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.ModRemoved.class,          name = "mod_removed"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.Follow.class,             name = "follow"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.Raw.class,                name = "raw"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.Error.class,              name = "error"),
 })
@@ -34,6 +43,15 @@ public sealed interface RoomRealtimeEvent permits
     RoomRealtimeEvent.Gift,
     RoomRealtimeEvent.StageDeviceControl,
     RoomRealtimeEvent.ModInvite,
+    RoomRealtimeEvent.WhiteboardActivated,
+    RoomRealtimeEvent.WhiteboardDeactivated,
+    RoomRealtimeEvent.MicOpened,
+    RoomRealtimeEvent.MicClosed,
+    RoomRealtimeEvent.RoomKick,
+    RoomRealtimeEvent.StageKick,
+    RoomRealtimeEvent.ModAccepted,
+    RoomRealtimeEvent.ModRemoved,
+    RoomRealtimeEvent.Follow,
     RoomRealtimeEvent.Raw,
     RoomRealtimeEvent.Error {
 
@@ -91,6 +109,36 @@ public sealed interface RoomRealtimeEvent permits
         @JsonProperty("switch_type") int switchType) implements RoomRealtimeEvent {}
 
     record ModInvite(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+
+    // Whiteboard
+    record WhiteboardActivated(String cname) implements RoomRealtimeEvent {}
+    record WhiteboardDeactivated(String cname) implements RoomRealtimeEvent {}
+
+    // Mic on/off (user-initiated, not mod-initiated)
+    record MicOpened(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record MicClosed(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+
+    // Kicked from room
+    record RoomKick(
+        @JsonProperty("user_id") String userId,
+        String nickname,
+        String managerName,
+        String cname
+    ) implements RoomRealtimeEvent {}
+
+    // Kicked from stage (by mod)
+    record StageKick(
+        @JsonProperty("user_id") String userId,
+        String managerName,
+        String cname
+    ) implements RoomRealtimeEvent {}
+
+    // Role changes
+    record ModAccepted(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record ModRemoved(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+
+    // Follow
+    record Follow(String nickname, int status) implements RoomRealtimeEvent {} // 1 = followed you, 2 = followed back
 
     record Raw(@JsonProperty("original_type") String originalType, Object payload) implements RoomRealtimeEvent {}
 

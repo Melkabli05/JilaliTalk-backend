@@ -76,14 +76,67 @@ public class HtNotifyMapper {
             RoomRealtimeEvent event = switch (type) {
                 case "1" -> mapTypeOne(info);
                 case "2" -> new RoomRealtimeEvent.UserQuit(textOr(info, "user_id", ""));
-                case "4", "23" -> new RoomRealtimeEvent.StageJoin(om.treeToValue(info, RoomRealtimeEvent.StageUserEvent.class));
-                case "5" -> info.has("coin") ? null : new RoomRealtimeEvent.StageQuit(textOr(info, "user_id", ""));
+                case "4" -> {
+                    if (info.has("lucky_bag_id")) {
+                        yield new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
+                    }
+                    yield new RoomRealtimeEvent.StageJoin(om.treeToValue(info, RoomRealtimeEvent.StageUserEvent.class));
+                }
+                case "5" -> {
+                    if (info.has("lucky_bag_id")) {
+                        yield new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
+                    }
+                    if (info.has("coin")) {
+                        yield null;
+                    }
+                    yield new RoomRealtimeEvent.StageQuit(textOr(info, "user_id", ""));
+                }
+                case "6" -> info.has("lucky_bag_id")
+                    ? new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class))
+                    : null;
+                case "8" -> new RoomRealtimeEvent.MicOpened(textOr(info, "user_id", ""));
+                case "9" -> new RoomRealtimeEvent.MicClosed(textOr(info, "user_id", ""));
                 case "10" -> new RoomRealtimeEvent.StageRaiseHand(textOr(info, "user_id", ""), 1);
                 case "11" -> new RoomRealtimeEvent.StageRaiseHand(textOr(info, "user_id", ""), 2);
                 case "18" -> new RoomRealtimeEvent.StageInvite(textOr(info, "user_id", ""));
+                case "23" -> new RoomRealtimeEvent.StageJoin(om.treeToValue(info, RoomRealtimeEvent.StageUserEvent.class));
                 case "25" -> new RoomRealtimeEvent.Comment(mapComment(info));
+                case "29" -> new RoomRealtimeEvent.StageKick(
+                    textOr(info, "user_id", ""),
+                    textOr(info, "manager_name", ""),
+                    textOr(info, "cname", "")
+                );
                 case "30" -> new RoomRealtimeEvent.StageDeviceControl(textOr(info, "user_id", ""), 1, 1);
+                case "34" -> new RoomRealtimeEvent.ModAccepted(textOr(info, "user_id", ""));
+                case "35" -> new RoomRealtimeEvent.ModRemoved(textOr(info, "user_id", ""));
+                case "40" -> new RoomRealtimeEvent.MicOpened(textOr(info, "user_id", "")); // mic on
                 case "48" -> new RoomRealtimeEvent.ModInvite(textOr(info, "user_id", ""));
+                case "53" -> new RoomRealtimeEvent.Follow(
+                    textOr(info, "nickname", ""),
+                    info.path("status").asInt(0)
+                );
+                case "3" -> {
+                    if (info.has("lucky_bag_id")) {
+                        yield new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
+                    }
+                    int gameType = info.path("game_type").asInt(-1);
+                    int kickType = info.path("kick_type").asInt(-1);
+                    if (gameType == 2) {
+                        yield new RoomRealtimeEvent.WhiteboardActivated(textOr(info, "cname", ""));
+                    }
+                    if (gameType == 0) {
+                        yield new RoomRealtimeEvent.WhiteboardDeactivated(textOr(info, "cname", ""));
+                    }
+                    if (kickType == 1) {
+                        yield new RoomRealtimeEvent.RoomKick(
+                            textOr(info, "user_id", ""),
+                            textOr(info, "nickname", ""),
+                            textOr(info, "manager_name", ""),
+                            textOr(info, "cname", "")
+                        );
+                    }
+                    yield new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
+                }
                 default -> new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
             };
             return Optional.ofNullable(event);
@@ -98,9 +151,13 @@ public class HtNotifyMapper {
         if (info.path("type").asInt(-1) == 1 && usersNode.isArray() && !usersNode.isEmpty()) {
             List<RoomRealtimeEvent.GiftEvent> gifts = new ArrayList<>();
             for (JsonNode userNode : usersNode) {
-                gifts.add(om.treeToValue(userNode, RoomRealtimeEvent.GiftEvent.class));
+                if (userNode.isObject()) {
+                    gifts.add(om.treeToValue(userNode, RoomRealtimeEvent.GiftEvent.class));
+                }
             }
-            return new RoomRealtimeEvent.Gift(gifts);
+            if (!gifts.isEmpty()) {
+                return new RoomRealtimeEvent.Gift(gifts);
+            }
         }
         String nickname = textOr(info, "nickname", textOr(info, "send_nickname", "Someone"));
         return new RoomRealtimeEvent.UserJoin(textOr(info, "user_id", ""), nickname);

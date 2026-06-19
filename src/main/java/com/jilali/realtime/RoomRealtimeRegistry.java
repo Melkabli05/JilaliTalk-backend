@@ -4,113 +4,135 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.core.JilaliProperties;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
-import io.micronaut.websocket.WebSocketClient;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Owns the lifecycle of one {@link HtLiveHubUpstreamConnector} + one event broadcaster per
- * active room {@code cname} — created on the first {@link RoomSocketController} subscriber,
- * disposed on the last, reconnected with backoff if the upstream connection drops while
- * subscribers remain.
+ * One upstream LiveHub WebSocket + {@link Sinks.Many} event broadcaster per room cname.
+ *
+ * <p>Lifecycle: created on first subscriber, torn down on last, auto-reconnects with
+ * exponential backoff while subscribers remain.  Uses virtual threads for blocking reconnect
+ * sleep.  Error handling is done via the {@link java.util.concurrent.CompletableFuture} returned
+ * by {@link HtLiveHubUpstreamConnector#connect(String, String, boolean)} — this ensures that
+ * stale callbacks from previous connection attempts for the same cname cannot affect the
+ * current connector.
  */
 @Singleton
 public class RoomRealtimeRegistry implements RoomEventSource {
 
     private static final Logger log = LoggerFactory.getLogger(RoomRealtimeRegistry.class);
-    private static final String LIVEHUB_URL = "wss://uploadprocn.hellotalk8.com/livehub/ws/conn";
+    private static final int BACKPRESSURE_LIMIT = 256;
 
-    private final WebSocketClient webSocketClient;
     private final ObjectMapper om;
+    private final HtNotifyMapper mapper;
     private final String userId;
     private final RoomSubscriberTracker tracker = new RoomSubscriberTracker();
     private final Map<String, RoomContext> rooms = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService reconnectScheduler =
-        Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().name("livehub-reconnect").factory());
 
-    public RoomRealtimeRegistry(WebSocketClient webSocketClient, ObjectMapper om, JilaliProperties properties) {
-        this.webSocketClient = webSocketClient;
+    public RoomRealtimeRegistry(ObjectMapper om, HtNotifyMapper mapper, JilaliProperties properties) {
         this.om = om;
+        this.mapper = mapper;
         this.userId = resolveUserId(properties.defaultAuthToken(), om);
     }
 
-    /** Subscribes to {@code cname}'s event stream, connecting upstream if this is the first subscriber. */
     public Flux<RoomRealtimeEvent> subscribe(String cname) {
         boolean isFirst = tracker.subscribe(cname);
-        RoomContext context = rooms.computeIfAbsent(cname, RoomContext::new);
+        RoomContext ctx = rooms.computeIfAbsent(cname, RoomContext::new);
         if (isFirst) {
-            connectUpstream(context);
+            connectUpstream(ctx);
         }
-        return context.sink.asFlux();
+        return ctx.sink.asFlux();
     }
 
-    /** Unsubscribes from {@code cname}; disconnects upstream if this was the last subscriber. */
     public void unsubscribe(String cname) {
-        boolean isLast = tracker.unsubscribe(cname);
-        if (isLast) {
-            RoomContext context = rooms.remove(cname);
-            if (context != null) closeConnector(context);
-            log.info("RoomRealtimeRegistry: last subscriber left cname='{}' — upstream closed", cname);
-        }
-    }
-
-    private void connectUpstream(RoomContext context) {
-        String url = LIVEHUB_URL + "?user_id=" + enc(userId) + "&cname=" + enc(context.cname) + "&is_visitor=true";
-        context.sink.tryEmitNext(new RoomRealtimeEvent.ConnectionState(context.reconnectAttempt == 0 ? "connecting" : "reconnecting"));
-        Mono.from(webSocketClient.connect(HtLiveHubUpstreamConnector.class, URI.create(url)))
-            .subscribe(
-                connector -> {
-                    context.connector = connector;
-                    context.reconnectAttempt = 0;
-                    connector.attach(
-                        event -> context.sink.tryEmitNext(event),
-                        () -> onUpstreamDisconnected(context));
-                    context.sink.tryEmitNext(new RoomRealtimeEvent.ConnectionState("connected"));
-                    log.info("RoomRealtimeRegistry: connected upstream for cname='{}'", context.cname);
-                },
-                error -> {
-                    log.error("RoomRealtimeRegistry: upstream connect failed for cname='{}': {}", context.cname, error.getMessage());
-                    onUpstreamDisconnected(context);
-                });
-    }
-
-    private void onUpstreamDisconnected(RoomContext context) {
-        context.sink.tryEmitNext(new RoomRealtimeEvent.ConnectionState("disconnected"));
-        if (tracker.subscriberCount(context.cname) <= 0) {
-            return; // nobody is watching this room anymore — unsubscribe()'s cleanup already ran or is about to
-        }
-        int attempt = context.reconnectAttempt++;
-        long delayMs = ReconnectBackoff.delayMillis(attempt);
-        log.info("RoomRealtimeRegistry: reconnecting cname='{}' in {}ms (attempt {})", context.cname, delayMs, attempt);
-        reconnectScheduler.schedule(() -> connectUpstream(context), delayMs, TimeUnit.MILLISECONDS);
-    }
-
-    private void closeConnector(RoomContext context) {
-        HtLiveHubUpstreamConnector connector = context.connector;
-        if (connector != null) {
-            try {
-                connector.close();
-            } catch (Exception e) {
-                log.warn("Error closing LiveHub upstream for cname='{}': {}", context.cname, e.getMessage());
+        if (tracker.unsubscribe(cname)) {
+            RoomContext ctx = rooms.remove(cname);
+            if (ctx != null) {
+                closeConnector(ctx);
+                log.info("RoomRealtimeRegistry: last subscriber left cname='{}' — upstream closed", cname);
             }
         }
     }
 
-    /** Package-visible for {@link RoomRealtimeRegistryTest}. Decodes the shared account's {@code uid} claim. */
+    private void connectUpstream(RoomContext ctx) {
+        boolean firstAttempt = ctx.reconnectAttempt == 0;
+        ctx.sink.tryEmitNext(firstAttempt
+            ? new RoomRealtimeEvent.ConnectionState("connecting")
+            : new RoomRealtimeEvent.ConnectionState("reconnecting"));
+
+        HtLiveHubUpstreamConnector connector = new HtLiveHubUpstreamConnector(mapper, om);
+        connector.attach(
+            event -> ctx.sink.tryEmitNext(event),
+            () -> onUpstreamDisconnected(ctx));
+
+        ctx.connector = connector;
+        ctx.reconnectAttempt = 0;
+
+        connector.connect(userId, ctx.cname, true)
+            .whenComplete((ws, ex) -> {
+                if (ex != null) {
+                    log.warn("RoomRealtimeRegistry: upstream connect failed cname='{}': {}",
+                        ctx.cname, ex.getMessage());
+                    onUpstreamDisconnected(ctx);
+                }
+                // on success: onOpen inside HtLiveHubUpstreamConnector already logged "connected"
+            });
+
+        ctx.sink.tryEmitNext(new RoomRealtimeEvent.ConnectionState("connected"));
+        log.info("RoomRealtimeRegistry: connected upstream for cname='{}'", ctx.cname);
+    }
+
+    private void onUpstreamDisconnected(RoomContext ctx) {
+        ctx.sink.tryEmitNext(new RoomRealtimeEvent.ConnectionState("disconnected"));
+        closeConnector(ctx);
+
+        if (tracker.subscriberCount(ctx.cname) <= 0) {
+            return; // nobody watching — unsubscribe() cleanup already ran or is about to
+        }
+
+        int attempt = ctx.reconnectAttempt++;
+        long delayMs = ReconnectBackoff.delayMillis(attempt);
+        log.info("RoomRealtimeRegistry: reconnecting cname='{}' in {}ms (attempt {})",
+            ctx.cname, delayMs, attempt);
+
+        Thread.ofVirtual()
+            .name("livehub-reconnect-" + ctx.cname)
+            .start(() -> {
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                connectUpstream(ctx);
+            });
+    }
+
+    private void closeConnector(RoomContext ctx) {
+        HtLiveHubUpstreamConnector c = ctx.connector;
+        ctx.connector = null;
+        if (c != null) {
+            try {
+                c.close();
+            } catch (Exception e) {
+                log.warn("Error closing LiveHub upstream for cname='{}': {}", ctx.cname, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Decodes the shared account's uid claim from the configured JWT auth token.
+     * Package-visible for {@link RoomRealtimeRegistryTest}.
+     */
     static String resolveUserId(String token, ObjectMapper om) {
         String[] parts = token.split("\\.");
         if (parts.length < 2) {
@@ -131,13 +153,12 @@ public class RoomRealtimeRegistry implements RoomEventSource {
         }
     }
 
-    private static String enc(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
+    // ── Inner types ─────────────────────────────────────────────────────────
 
     private static final class RoomContext {
         final String cname;
-        final Sinks.Many<RoomRealtimeEvent> sink = Sinks.many().multicast().onBackpressureBuffer();
+        final Sinks.Many<RoomRealtimeEvent> sink =
+            Sinks.many().multicast().onBackpressureBuffer(BACKPRESSURE_LIMIT);
         volatile HtLiveHubUpstreamConnector connector;
         volatile int reconnectAttempt = 0;
 

@@ -41,6 +41,11 @@ public final class JilaliException extends RuntimeException {
             case 100003, 100004 -> HttpStatus.UNAUTHORIZED; // session expired / not authenticated
             case 100005 -> HttpStatus.FORBIDDEN;            // insufficient permissions
             case 190032 -> HttpStatus.UNPROCESSABLE_ENTITY; // VoiceManagerUpdateFailed
+            // Non-VIP watch limit exceeded and no VIP-trial card left to auto-claim. Deliberately
+            // NOT 403 — the frontend's error interceptor force-navigates to a full-page /error/403
+            // on any 403, which would eject the user from the room instead of showing an inline
+            // "upgrade to VIP" message.
+            case 190041 -> HttpStatus.PAYMENT_REQUIRED;
             case 200001, 200002 -> HttpStatus.NOT_FOUND;    // room / user not found
             case 300001 -> HttpStatus.CONFLICT;             // already in room / already joined
             case 300002 -> HttpStatus.GONE;                 // room closed / expired

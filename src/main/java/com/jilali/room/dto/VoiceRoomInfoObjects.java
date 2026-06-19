@@ -7,7 +7,6 @@ import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 
 import java.util.List;
-import java.util.Map;
 
 /** Additional nested DTOs for fields in the LiveHub voice_room_info response. */
 public final class VoiceRoomInfoObjects {
@@ -30,7 +29,7 @@ public final class VoiceRoomInfoObjects {
             @Nullable String nationality,
             int role,
             @JsonProperty("vip_type") int vipType,
-            @JsonProperty("msg") @Nullable Map<String, Object> msg,
+            @JsonProperty("msg") @Nullable Msg msg,
             @JsonProperty("day_rank_level") int dayRankLevel,
             @JsonProperty("gift_level") int giftLevel,
             @JsonProperty("fg_level") int fgLevel,
@@ -46,8 +45,36 @@ public final class VoiceRoomInfoObjects {
             @JsonProperty("vip_logo_anim") @Nullable String vipLogoAnim,
             @Nullable String expireAt,
             @JsonProperty("medal_wall_icon") @Nullable String medalWallIcon,
-            @JsonProperty("comment_closed_friend") @Nullable String commentClosedFriend,
-            @JsonProperty("user_extra_info") @Nullable Map<String, Object> userExtraInfo) {}
+            @JsonProperty("comment_closed_friend") @Nullable CommentClosedFriend commentClosedFriend,
+            @JsonProperty("user_extra_info") @Nullable UserExtraInfo userExtraInfo) {
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        @Serdeable
+        public record CommentClosedFriend(
+                @JsonProperty("couple_max_level") int coupleMaxLevel,
+                @JsonProperty("couple_max_level_icon") @Nullable String coupleMaxLevelIcon,
+                @JsonProperty("best_max_level") int bestMaxLevel,
+                @JsonProperty("best_max_level_icon") @Nullable String bestMaxLevelIcon) {}
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        @Serdeable
+        public record Msg(@Nullable TextPayload text) {
+
+            @JsonIgnoreProperties(ignoreUnknown = true)
+            @Serdeable
+            public record TextPayload(@Nullable String text) {}
+        }
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        @Serdeable
+        public record UserExtraInfo(
+                @JsonProperty("hide_vip_identity") int hideVipIdentity,
+                @JsonProperty("is_expert") boolean isExpert,
+                @JsonProperty("is_new_user") boolean isNewUser,
+                @JsonProperty("vip_plus_expire_ts") long vipPlusExpireTs,
+                @JsonProperty("vip_plus_logo") @Nullable String vipPlusLogo,
+                @JsonProperty("vip_plus_logo_anim") @Nullable String vipPlusLogoAnim) {}
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
@@ -104,6 +131,13 @@ public final class VoiceRoomInfoObjects {
             @JsonProperty("speak_mode") int speakMode) {}
 
     // ---- top-level room fields ----
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @Serdeable
+    public record LuckBag(
+            @JsonProperty("lucky_bag_id") @Nullable String luckyBagId,
+            @JsonProperty("lucky_bag_number") int luckyBagNumber,
+            @JsonProperty("room_id") @Nullable String roomId) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Serdeable
