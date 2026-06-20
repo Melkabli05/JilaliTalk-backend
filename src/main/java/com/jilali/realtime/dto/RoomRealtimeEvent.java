@@ -1,10 +1,14 @@
 package com.jilali.realtime.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.util.List;
+
+// Wire keys are camelCase: every record below is constructed by hand in HtNotifyMapper —
+// never deserialized from JSON — so there is no upstream snake_case shape to mirror here.
+// (Contrast with com.jilali.room.dto, where the same record both reads upstream's
+// snake_case JSON and is returned to our frontend, so @JsonProperty(snake_case) is load-bearing.)
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
@@ -57,70 +61,62 @@ public sealed interface RoomRealtimeEvent permits
 
     record ConnectionState(String state) implements RoomRealtimeEvent {}
 
-    record UserJoin(@JsonProperty("user_id") String userId, String nickname) implements RoomRealtimeEvent {}
+    record UserJoin(String userId, String nickname) implements RoomRealtimeEvent {}
 
-    record UserQuit(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record UserQuit(String userId) implements RoomRealtimeEvent {}
 
-    record StageUserEvent(
-        @JsonProperty("user_id") String userId,
-        String nickname,
-        @JsonProperty("head_url") String headUrl) {}
+    record StageUserEvent(String userId, String nickname, String headUrl) {}
 
     record StageJoin(StageUserEvent stageUser) implements RoomRealtimeEvent {}
 
-    record StageQuit(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record StageQuit(String userId) implements RoomRealtimeEvent {}
 
-    record StageRaiseHand(
-        @JsonProperty("user_id") String userId,
-        @JsonProperty("raisehand_type") int raisehandType) implements RoomRealtimeEvent {}
+    record StageRaiseHand(String userId, int raisehandType) implements RoomRealtimeEvent {}
 
-    record StageInvite(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record StageInvite(String userId) implements RoomRealtimeEvent {}
 
     record ReplyInfoEvent(
-        @JsonProperty("msg_id") String msgId,
-        @JsonProperty("from_id") long fromId,
-        @JsonProperty("from_nickname") String fromNickname,
+        String msgId,
+        long fromId,
+        String fromNickname,
         String text,
-        @JsonProperty("msg_type") String msgType) {}
+        String msgType) {}
 
     record CommentEvent(
         String id,
-        @JsonProperty("user_id") String userId,
+        String userId,
         String nickname,
-        @JsonProperty("head_url") String headUrl,
+        String headUrl,
         String text,
         long ts,
-        @JsonProperty("reply_info") ReplyInfoEvent replyInfo) {}
+        ReplyInfoEvent replyInfo) {}
 
     record Comment(CommentEvent comment) implements RoomRealtimeEvent {}
 
     record GiftEvent(
-        @JsonProperty("send_uid") String sendUid,
-        @JsonProperty("send_nickname") String sendNickname,
-        @JsonProperty("receiver_uid") String receiverUid,
-        @JsonProperty("receiver_nickname") String receiverNickname,
-        @JsonProperty("small_pic") String smallPic) {}
+        String sendUid,
+        String sendNickname,
+        String receiverUid,
+        String receiverNickname,
+        String smallPic) {}
 
     record Gift(List<GiftEvent> gifts) implements RoomRealtimeEvent {}
 
-    record StageDeviceControl(
-        @JsonProperty("user_id") String userId,
-        @JsonProperty("device_type") int deviceType,
-        @JsonProperty("switch_type") int switchType) implements RoomRealtimeEvent {}
+    record StageDeviceControl(String userId, int deviceType, int switchType) implements RoomRealtimeEvent {}
 
-    record ModInvite(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record ModInvite(String userId) implements RoomRealtimeEvent {}
 
     // Whiteboard
     record WhiteboardActivated(String cname) implements RoomRealtimeEvent {}
     record WhiteboardDeactivated(String cname) implements RoomRealtimeEvent {}
 
     // Mic on/off (user-initiated, not mod-initiated)
-    record MicOpened(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
-    record MicClosed(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record MicOpened(String userId) implements RoomRealtimeEvent {}
+    record MicClosed(String userId) implements RoomRealtimeEvent {}
 
     // Kicked from room
     record RoomKick(
-        @JsonProperty("user_id") String userId,
+        String userId,
         String nickname,
         String managerName,
         String cname
@@ -128,19 +124,19 @@ public sealed interface RoomRealtimeEvent permits
 
     // Kicked from stage (by mod)
     record StageKick(
-        @JsonProperty("user_id") String userId,
+        String userId,
         String managerName,
         String cname
     ) implements RoomRealtimeEvent {}
 
     // Role changes
-    record ModAccepted(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
-    record ModRemoved(@JsonProperty("user_id") String userId) implements RoomRealtimeEvent {}
+    record ModAccepted(String userId) implements RoomRealtimeEvent {}
+    record ModRemoved(String userId) implements RoomRealtimeEvent {}
 
     // Follow
     record Follow(String nickname, int status) implements RoomRealtimeEvent {} // 1 = followed you, 2 = followed back
 
-    record Raw(@JsonProperty("original_type") String originalType, Object payload) implements RoomRealtimeEvent {}
+    record Raw(String originalType, Object payload) implements RoomRealtimeEvent {}
 
     record Error(String message) implements RoomRealtimeEvent {}
 }

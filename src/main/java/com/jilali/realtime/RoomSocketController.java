@@ -48,7 +48,16 @@ public class RoomSocketController {
             session.close();
             return;
         }
-        Disposable subscription = source.subscribe(cname).subscribe(event -> sendEvent(session, event));
+        // Optional query params drive the room-level presence heartbeat (see
+        // RoomRealtimeRegistry) — absent or 0 means "don't drive it from this subscriber"
+        // (e.g. an invisible/ghost join), mirroring the frontend's old visible-only guard.
+        var params = request.getParameters();
+        long hostId = params.get("hostId", Long.class).orElse(0L);
+        int busiType = params.get("busiType", Integer.class).orElse(2);
+        long heartbeatSeconds = params.get("heartbeatSeconds", Long.class).orElse(0L);
+
+        Disposable subscription = source.subscribe(cname, hostId, busiType, heartbeatSeconds)
+            .subscribe(event -> sendEvent(session, event));
         subscriptions.put(session.getId(), subscription);
         log.info("RoomSocketController: session '{}' subscribed to cname='{}'", session.getId(), cname);
     }

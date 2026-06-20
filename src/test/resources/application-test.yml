@@ -1,3 +1,7 @@
+micronaut:
+  server:
+    port: -1 # ephemeral port — avoids clashing with a locally running dev server on 8080
+
 jilali:
   allowed-web-socket-origins:
     - "http://localhost:4200"

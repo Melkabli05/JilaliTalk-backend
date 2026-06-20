@@ -80,7 +80,7 @@ public class HtNotifyMapper {
                     if (info.has("lucky_bag_id")) {
                         yield new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
                     }
-                    yield new RoomRealtimeEvent.StageJoin(om.treeToValue(info, RoomRealtimeEvent.StageUserEvent.class));
+                    yield new RoomRealtimeEvent.StageJoin(mapStageUser(info));
                 }
                 case "5" -> {
                     if (info.has("lucky_bag_id")) {
@@ -99,7 +99,7 @@ public class HtNotifyMapper {
                 case "10" -> new RoomRealtimeEvent.StageRaiseHand(textOr(info, "user_id", ""), 1);
                 case "11" -> new RoomRealtimeEvent.StageRaiseHand(textOr(info, "user_id", ""), 2);
                 case "18" -> new RoomRealtimeEvent.StageInvite(textOr(info, "user_id", ""));
-                case "23" -> new RoomRealtimeEvent.StageJoin(om.treeToValue(info, RoomRealtimeEvent.StageUserEvent.class));
+                case "23" -> new RoomRealtimeEvent.StageJoin(mapStageUser(info));
                 case "25" -> new RoomRealtimeEvent.Comment(mapComment(info));
                 case "29" -> new RoomRealtimeEvent.StageKick(
                     textOr(info, "user_id", ""),
@@ -146,13 +146,13 @@ public class HtNotifyMapper {
         }
     }
 
-    private RoomRealtimeEvent mapTypeOne(JsonNode info) throws com.fasterxml.jackson.core.JsonProcessingException {
+    private RoomRealtimeEvent mapTypeOne(JsonNode info) {
         JsonNode usersNode = info.path("users");
         if (info.path("type").asInt(-1) == 1 && usersNode.isArray() && !usersNode.isEmpty()) {
             List<RoomRealtimeEvent.GiftEvent> gifts = new ArrayList<>();
             for (JsonNode userNode : usersNode) {
                 if (userNode.isObject()) {
-                    gifts.add(om.treeToValue(userNode, RoomRealtimeEvent.GiftEvent.class));
+                    gifts.add(mapGift(userNode));
                 }
             }
             if (!gifts.isEmpty()) {
@@ -161,6 +161,29 @@ public class HtNotifyMapper {
         }
         String nickname = textOr(info, "nickname", textOr(info, "send_nickname", "Someone"));
         return new RoomRealtimeEvent.UserJoin(textOr(info, "user_id", ""), nickname);
+    }
+
+    /**
+     * {@code RoomRealtimeEvent.StageUserEvent} carries no {@code @JsonProperty} overrides (its
+     * fields are already camelCase for the outbound WS frame to the frontend), so unlike most of
+     * this mapper it cannot be built via {@code om.treeToValue} against the upstream's snake_case
+     * {@code notify_info} — it has to be read out field by field, same as every other event here.
+     */
+    private RoomRealtimeEvent.StageUserEvent mapStageUser(JsonNode info) {
+        return new RoomRealtimeEvent.StageUserEvent(
+            textOr(info, "user_id", null),
+            textOr(info, "nickname", null),
+            textOr(info, "head_url", null));
+    }
+
+    /** See {@link #mapStageUser} — same reason {@code GiftEvent} is read field by field. */
+    private RoomRealtimeEvent.GiftEvent mapGift(JsonNode userNode) {
+        return new RoomRealtimeEvent.GiftEvent(
+            textOr(userNode, "send_uid", null),
+            textOr(userNode, "send_nickname", null),
+            textOr(userNode, "receiver_uid", null),
+            textOr(userNode, "receiver_nickname", null),
+            textOr(userNode, "small_pic", null));
     }
 
     private RoomRealtimeEvent.CommentEvent mapComment(JsonNode info) {

@@ -9,6 +9,15 @@ import reactor.core.publisher.Flux;
  * {@code @Replaces(RoomRealtimeRegistry.class)} without touching the real LiveHub socket.
  */
 public interface RoomEventSource {
-    Flux<RoomRealtimeEvent> subscribe(String cname);
+
+    /**
+     * @param hostId per-room presence heartbeat target; pass {@code 0} for a subscriber that
+     *               should receive events but not drive the room's heartbeat (e.g. an
+     *               invisible/ghost join, mirroring the frontend's old visible-only guard).
+     * @param heartbeatSeconds upstream-configured heartbeat interval, or {@code <= 0} to use
+     *               the default.
+     */
+    Flux<RoomRealtimeEvent> subscribe(String cname, long hostId, int busiType, long heartbeatSeconds);
+
     void unsubscribe(String cname);
 }

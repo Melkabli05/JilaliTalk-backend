@@ -8,6 +8,10 @@
     <logger name="io.micronaut.http.client" level="DEBUG"/>
     <logger name="io.micronaut.serde" level="WARN"/>
     <logger name="com.jilali" level="DEBUG"/>
+    <!-- TRACE temporarily on: diagnosing the LiveHub WS 1006-after-~3.5s reconnect loop —
+         this is the only level that logs handleFrame's "LiveHub RX" line, which shows whether
+         the server ever replies to our action:1 init frame before the connection dies. -->
+    <logger name="com.jilali.realtime" level="TRACE"/>
 
     <root level="info">
         <appender-ref ref="STDOUT"/>
