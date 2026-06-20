@@ -12,8 +12,6 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
@@ -129,7 +127,7 @@ public class RoomRealtimeRegistry implements RoomEventSource {
             ? new RoomRealtimeEvent.ConnectionState("connecting")
             : new RoomRealtimeEvent.ConnectionState("reconnecting"));
 
-        HtLiveHubUpstreamConnector connector = new HtLiveHubUpstreamConnector(mapper, om, properties);
+        HtLiveHubUpstreamConnector connector = new HtLiveHubUpstreamConnector(mapper, om);
         connector.attach(
             event -> ctx.sink.tryEmitNext(event),
             () -> onUpstreamDisconnected(ctx));

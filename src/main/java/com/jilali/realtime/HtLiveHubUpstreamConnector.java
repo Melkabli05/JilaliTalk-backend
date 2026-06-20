@@ -2,7 +2,6 @@ package com.jilali.realtime;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jilali.core.JilaliProperties;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
-import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -58,7 +56,6 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
 
     private final HtNotifyMapper mapper;
     private final ObjectMapper om;
-    private final JilaliProperties properties;
 
     // ── caller-supplied delegates (stable across the lifetime of one instance) ──
     private volatile Consumer<RoomRealtimeEvent> eventListener;
@@ -72,8 +69,6 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     private volatile boolean connected;
     private volatile long heartbeatIntervalSec = 60;
     private volatile Thread heartbeatThread;
-    private volatile Thread pingThread;
-    private static final Duration PING_INTERVAL = Duration.ofSeconds(2);
     /**
      * Tail of the send chain — {@code WebSocket.sendText} permits only one outstanding send at
      * a time; a second call before the first completes fails (asynchronously, via the discarded
@@ -83,10 +78,9 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
      */
     private volatile CompletableFuture<WebSocket> sendChain = CompletableFuture.completedFuture(null);
 
-    public HtLiveHubUpstreamConnector(HtNotifyMapper mapper, ObjectMapper om, JilaliProperties properties) {
+    public HtLiveHubUpstreamConnector(HtNotifyMapper mapper, ObjectMapper om) {
         this.mapper = mapper;
         this.om = om;
-        this.properties = properties;
     }
 
     /**
@@ -119,49 +113,13 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
             log.debug("LiveHub WS connecting to: {}", url);
         }
 
-        // The handshake otherwise carries no device-context headers, unlike every other call
-        // this codebase makes to the *.hellotalk8.com family (see DefaultHeadersClientFilter) —
-        // it looks like a bare Java client rather than the app, which is consistent with the
-        // upstream silently severing the socket (close code 1006) a few seconds after the
-        // handshake succeeds, well before the 60s app-level heartbeat is ever due.
         return HTTP_CLIENT.newWebSocketBuilder()
-            .header("User-Agent", "ios;6.1.0;iPhone;18.5;")
-            .header("x-ht-version", "6.1.0")
-            .header("x-ht-os", "ios")
-            .header("x-ht-channel", "AppStore")
-            .header("x-ht-lang", "English")
-            .header("x-ht-ui-mode", "1")
-            .header("x-ht-timezone", "1.00")
-            .header("x-ht-tzid", "Africa/Casablanca")
-            .header("x-ht-device", "iPhone")
-            .header("x-ht-os-version", "18.5")
-            .header("x-ht-build", "135")
-            .header("x-ht-did", properties.deviceId())
-            .header("x-ht-uid", userId)
-            .header("Accept-Language", "en-MA;q=1.0, fr-MA;q=0.9, ar-MA;q=0.8")
-            .header("Authorization", "Bearer " + properties.defaultAuthToken())
-            .header("x-ht-token", "Bearer " + properties.defaultAuthToken())
             .buildAsync(URI.create(url), new Listener())
             .thenAccept(ws -> {
                 this.ws = ws;
                 connected = true;
                 log.info("LiveHub WS connected cname={}", cname);
                 send(new InitFrame(userIdAsLong(), cname, 1));
-                // Production no longer replies with {"heartbeat_sec":...} to acknowledge the
-                // init frame (confirmed via wire trace: room broadcast events arrive over the
-                // socket — subscription is keyed off the cname/user_id query params, not this
-                // frame — but no heartbeat_sec or heartbeat_time frame ever does). Heartbeat
-                // proactively instead of waiting on a reply that never comes.
-                sendHeartbeat();
-                scheduleHeartbeat();
-                // The app-level heartbeat above did not keep the connection alive either, even
-                // after confirming via wire trace that it really does reach the server — every
-                // connection still died at the same ~3.5s mark. That points at a layer below the
-                // app protocol: many reverse proxies/load balancers track liveness via the raw
-                // RFC 6455 WS ping/pong control frames (inspectable without parsing app JSON),
-                // not the app's own heartbeat message. Ping at a fixed short interval to test
-                // that theory; this is independent of, and additional to, the app heartbeat.
-                schedulePing();
                 ws.request(1);
             });
         // Errors are NOT handled here — caller handles them via the returned CF.
@@ -172,7 +130,6 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     public void close() {
         connected = false;
         cancelHeartbeat();
-        cancelPing();
         WebSocket s = this.ws;
         if (s != null) {
             try {
@@ -219,10 +176,9 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     /**
      * The reference browser client ({@code fireRoomWebSocket} in scriptv2.js) derives
      * {@code user_id} from {@code JSON.parse(jwt payload).uid} — a bare JSON number — and
-     * sends it as a number in every frame (init/heartbeat/ack). Our frames declared it as
-     * a {@code String}, so Jackson sent {@code "user_id":"169335562"} (quoted) instead of
-     * {@code "user_id":169335562}. Testing whether that type mismatch is why the server
-     * never sends back {@code heartbeat_sec} and kills the connection ~3.5s in.
+     * sends it as a number in every frame (init/heartbeat/ack). Sending it quoted instead
+     * (a {@code String} field) made the server silently reject the init frame: it never
+     * replied with {@code heartbeat_sec}, and the connection died ~3.5s in every time.
      */
     private long userIdAsLong() {
         return Long.parseLong(userId);
@@ -247,47 +203,6 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
                 log.warn("LiveHub WS send failed cname={}: {}", cname, e.getMessage());
                 return null;
             });
-    }
-
-    /**
-     * Sends a zero-length RFC 6455 WS-protocol ping — distinct from the app-level JSON
-     * heartbeat, and routed through the same {@link #sendChain} since {@code sendPing} is
-     * subject to the identical "one outstanding send" constraint as {@code sendText}.
-     */
-    private synchronized void sendPing() {
-        WebSocket s = this.ws;
-        if (s == null || !connected) return;
-        sendChain = sendChain
-            .handle((ignoredResult, ignoredEx) -> null)
-            .thenCompose(ignored -> s.sendPing(ByteBuffer.allocate(0)))
-            .exceptionally(e -> {
-                log.warn("LiveHub WS ping failed cname={}: {}", cname, e.getMessage());
-                return null;
-            });
-    }
-
-    private void schedulePing() {
-        pingThread = Thread.ofVirtual()
-            .name("livehub-ping-" + cname)
-            .start(() -> {
-                while (connected) {
-                    try {
-                        Thread.sleep(PING_INTERVAL);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                    if (connected) sendPing();
-                }
-            });
-    }
-
-    private void cancelPing() {
-        Thread t = pingThread;
-        pingThread = null;
-        if (t != null) {
-            t.interrupt();
-        }
     }
 
     private void scheduleHeartbeat() {
@@ -357,7 +272,6 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
         public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
             connected = false;
             cancelHeartbeat();
-            cancelPing();
             log.info("LiveHub WS closed cname={} status={} reason={}", cname, statusCode, reason);
             Runnable listener = disconnectListener;
             if (listener != null) listener.run();
