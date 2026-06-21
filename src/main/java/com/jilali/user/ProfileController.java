@@ -7,8 +7,13 @@ import com.jilali.user.dto.FollowersResponse;
 import com.jilali.user.dto.FollowingResponse;
 import com.jilali.user.dto.LikeCountResponse;
 import com.jilali.user.dto.ProfileMeResponse;
+import com.jilali.user.dto.ProfileStatsResponse;
 import com.jilali.user.dto.UserLangsResponse;
 import com.jilali.user.dto.VisitRequest;
+import com.jilali.user.dto.VisitorHistoryRequest;
+import com.jilali.user.dto.VisitorsResponse;
+import com.jilali.user.dto.ProfileEditRequest;
+import com.jilali.user.dto.ProfileEditResponse;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
@@ -97,6 +102,21 @@ public class ProfileController {
     @Get("/langs")
     public UserLangsResponse langs(@QueryValue long userId) {
         return profileClient.userLangs(userId);
+    }
+
+    @Post("/stats")
+    public ProfileStatsResponse stats(@Body Map<String, Object> body) {
+        return profileClient.stats(body);
+    }
+
+    @Post("/visitors")
+    public VisitorsResponse visitors(@Body VisitorHistoryRequest body) {
+        return profileClient.visitors(body);
+    }
+
+    @Post("/edit")
+    public ProfileEditResponse edit(@Body ProfileEditRequest body) {
+        return profileClient.editProfile(body);
     }
 
     private static long toLong(Object v) {
