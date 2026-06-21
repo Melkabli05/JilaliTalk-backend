@@ -72,6 +72,28 @@ class HtNotifyMapperTest {
     }
 
     @Test
+    void notifyType3WithKickType2MapsToUserQuit() {
+        // kick_type 1 (mapped to RoomKick) carries manager_name; kick_type 2 never does —
+        // it's a voluntary leave, the same real-world event as notify_type 2.
+        RoomRealtimeEvent event = mapper.map(
+            "{\"event\":{\"notify_type\":\"3\",\"notify_info\":{\"audience_total\":17,"
+                + "\"cname\":\"VR_149521626_1781921105276383831\",\"kick_type\":2,"
+                + "\"nickname\":\"Wpsiw\",\"user_id\":171266284}},\"msg_id\":\"m14\"}").orElseThrow();
+        assertEquals("171266284", assertInstanceOf(RoomRealtimeEvent.UserQuit.class, event).userId());
+    }
+
+    @Test
+    void notifyType3WithKickType1MapsToRoomKick() {
+        RoomRealtimeEvent event = mapper.map(
+            "{\"event\":{\"notify_type\":\"3\",\"notify_info\":{\"kick_type\":1,\"user_id\":\"5\","
+                + "\"nickname\":\"Target\",\"manager_name\":\"Mod\",\"cname\":\"VR_1\"}},\"msg_id\":\"m15\"}")
+            .orElseThrow();
+        RoomRealtimeEvent.RoomKick kick = assertInstanceOf(RoomRealtimeEvent.RoomKick.class, event);
+        assertEquals("5", kick.userId());
+        assertEquals("Mod", kick.managerName());
+    }
+
+    @Test
     void notifyType4And23BothMapToStageJoin() {
         RoomRealtimeEvent four = mapper.map(
             "{\"event\":{\"notify_type\":\"4\",\"notify_info\":{\"user_id\":\"7\",\"nickname\":\"KM\",\"head_url\":\"https://x\"}},\"msg_id\":\"m4\"}").orElseThrow();

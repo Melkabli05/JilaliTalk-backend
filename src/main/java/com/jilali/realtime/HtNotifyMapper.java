@@ -135,6 +135,11 @@ public class HtNotifyMapper {
                             textOr(info, "cname", "")
                         );
                     }
+                    // kick_type 2 carries no manager_name (unlike kick_type 1) — the user left
+                    // on their own, the same real-world event as notify_type 2's UserQuit.
+                    if (kickType == 2) {
+                        yield new RoomRealtimeEvent.UserQuit(textOr(info, "user_id", ""));
+                    }
                     yield new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
                 }
                 default -> new RoomRealtimeEvent.Raw(type, om.treeToValue(root, Object.class));
