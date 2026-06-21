@@ -5,6 +5,10 @@ import io.micronaut.serde.annotation.Serdeable;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
+/**
+ * Response from {@code GET /profile/v2/me}.
+ * Uses {@code code}/@{code msg} envelope — the same format as LiveHub.
+ */
 @Serdeable
 public record ProfileMeResponse(
     int code,

@@ -5,6 +5,10 @@ import io.micronaut.serde.annotation.Serdeable;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
+/**
+ * Response from {@code GET /relation/followers}.
+ * Uses {@code status}/{@code message} envelope — NOT the LiveHub {@code code}/{@code msg}.
+ */
 @Serdeable
 public record FollowersResponse(
     int status,
@@ -16,13 +20,17 @@ public record FollowersResponse(
         @JsonProperty("page_index") String pageIndex,
         boolean more,
         int count,
+        @Nullable PinnedStat pinnedStat,
         @Nullable List<FollowerUser> list
     ) {}
 
     @Serdeable
+    public record PinnedStat(int limit, int cnt) {}
+
+    @Serdeable
     public record FollowerUser(
         @JsonProperty("user_id") long userId,
-        @Nullable String sex,
+        int sex,
         @Nullable String nationality,
         @JsonProperty("head_url") @Nullable String headUrl,
         @JsonProperty("nick_name") @Nullable String nickName,

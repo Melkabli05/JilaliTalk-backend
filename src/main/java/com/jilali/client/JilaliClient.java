@@ -13,13 +13,6 @@ import com.jilali.manager.dto.ManagerListResponse;
 import com.jilali.manager.dto.SetManagerRequest;
 import com.jilali.room.dto.BatchQueryRequest;
 import com.jilali.room.dto.BatchQueryResponse;
-import com.jilali.user.dto.FollowersResponse;
-import com.jilali.user.dto.FollowingResponse;
-import com.jilali.user.dto.FollowRequest;
-import com.jilali.user.dto.LikeCountResponse;
-import com.jilali.user.dto.ProfileMeResponse;
-import com.jilali.user.dto.UserLangsResponse;
-import com.jilali.user.dto.VisitRequest;
 import com.jilali.room.dto.CategoryTopicListResponse;
 import com.jilali.room.dto.ChannelListItem;
 import com.jilali.room.dto.ChannelListResponse;
@@ -296,37 +289,4 @@ public interface JilaliClient {
     @Serdeable
     record JoinQuitRequest(String cname, @JsonProperty("busi_type") int busiType) {
     }
-
-    // ── Profile ──────────────────────────────────────────────────────────────
-
-    @Get("/profile/v2/me")
-    ProfileMeResponse profileMe();
-
-    @Get("/relation/followers")
-    FollowersResponse followers(
-        @QueryValue("client_os_lang") String lang,
-        @QueryValue("page_index") String pageIndex,
-        @QueryValue("page_size") int pageSize);
-
-    @Get("/relation/followings")
-    FollowingResponse followings(
-        @QueryValue("client_os_lang") String lang,
-        @QueryValue("focus_tab") int focusTab,
-        @QueryValue("page_size") int pageSize,
-        @QueryValue("title") String title);
-
-    @Post("/relation/follow")
-    FollowersResponse follow(@Body FollowRequest body);
-
-    @Post("/user_profile_visitor/v1/visit")
-    void recordVisit(@Body VisitRequest body);
-
-    @Get("/user_profile_visitor/v2/profile_liker_count")
-    LikeCountResponse likeCount(
-        @QueryValue("client_os_lang") String lang,
-        @QueryValue("terminal_type") int terminalType,
-        @QueryValue("uid") long uid);
-
-    @Get("/go_user_search/v1/go_user_info/get_user_langs")
-    UserLangsResponse userLangs(@QueryValue("user_id") long userId);
 }
