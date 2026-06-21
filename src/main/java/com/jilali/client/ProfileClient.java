@@ -4,8 +4,13 @@ import com.jilali.user.dto.FollowResultResponse;
 import com.jilali.user.dto.FollowersResponse;
 import com.jilali.user.dto.FollowingResponse;
 import com.jilali.user.dto.LikeCountResponse;
+import com.jilali.user.dto.ProfileEditRequest;
+import com.jilali.user.dto.ProfileEditResponse;
 import com.jilali.user.dto.ProfileMeResponse;
+import com.jilali.user.dto.ProfileStatsResponse;
 import com.jilali.user.dto.UserLangsResponse;
+import com.jilali.user.dto.VisitorHistoryRequest;
+import com.jilali.user.dto.VisitorsResponse;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
@@ -13,6 +18,7 @@ import io.micronaut.http.client.annotation.Client;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
+import java.util.Map;
 
 /**
  * Separate client for profile/relation endpoints that live at the API root
@@ -81,4 +87,13 @@ public interface ProfileClient {
     /** Request body for {@code POST /profile/v2/me}. */
     @io.micronaut.serde.annotation.Serdeable
     record ProfileMeBody(int rewardNotify, int studyPopup) {}
+
+    @Post("/profile/v1/baseinfo/mnt_info")
+    ProfileStatsResponse stats(@Body Map<String, Object> body);
+
+    @Post("/user_profile_visitor/v2/my_history")
+    VisitorsResponse visitors(@Body VisitorHistoryRequest body);
+
+    @Post("/profile/v1/modify_baseinfo")
+    ProfileEditResponse editProfile(@Body ProfileEditRequest body);
 }
