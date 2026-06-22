@@ -17,8 +17,20 @@ public record ProfileMeResponse(
 ) {
     @Serdeable
     public record ProfileMeData(
+        @Nullable UserInfo user,
         @Nullable Increment increment,
         @Nullable VisitorData visitor
+    ) {}
+
+    @Serdeable
+    public record UserInfo(
+        @JsonProperty("user_id") long userId,
+        @JsonProperty("nick_name") @Nullable String nickName,
+        @JsonProperty("head_url") @Nullable String headUrl,
+        @Nullable String nationality,
+        @JsonProperty("vip_type") int vipType,
+        int sex,
+        @Nullable String email
     ) {}
 
     @Serdeable
