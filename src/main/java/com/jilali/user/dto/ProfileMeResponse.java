@@ -19,7 +19,8 @@ public record ProfileMeResponse(
     public record ProfileMeData(
         @Nullable UserInfo user,
         @Nullable Increment increment,
-        @Nullable VisitorData visitor
+        @Nullable VisitorData visitor,
+        boolean isRealAuth
     ) {}
 
     @Serdeable
