@@ -21,6 +21,7 @@ import reactor.core.publisher.Mono;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -104,7 +105,7 @@ class RoomSocketControllerTest {
         throw new AssertionError("unreachable");
     }
 
-    record Call(String cname, long hostId, int busiType, long heartbeatSeconds) {
+    record Call(String cname, long hostId, int busiType, long heartbeatSeconds, Optional<Long> jilaliUserId) {
     }
 
     @Singleton
@@ -114,13 +115,14 @@ class RoomSocketControllerTest {
         final List<Call> calls = new CopyOnWriteArrayList<>();
 
         @Override
-        public Flux<RoomRealtimeEvent> subscribe(String cname, long hostId, int busiType, long heartbeatSeconds) {
-            calls.add(new Call(cname, hostId, busiType, heartbeatSeconds));
+        public Flux<RoomRealtimeEvent> subscribe(String cname, long hostId, int busiType, long heartbeatSeconds,
+                                                   Optional<Long> jilaliUserId) {
+            calls.add(new Call(cname, hostId, busiType, heartbeatSeconds, jilaliUserId));
             return Flux.never();
         }
 
         @Override
-        public void unsubscribe(String cname) {
+        public void unsubscribe(String cname, Optional<Long> jilaliUserId) {
             // no-op
         }
     }
