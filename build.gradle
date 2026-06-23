@@ -24,9 +24,12 @@ dependencies {
     implementation 'io.micronaut.openapi:micronaut-openapi'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.79'
     implementation 'io.projectreactor:reactor-core'
+    implementation 'io.micronaut.sql:micronaut-jdbc-hikari'
+    implementation 'at.favre.lib:bcrypt:0.10.2'
 
     runtimeOnly 'ch.qos.logback:logback-classic'
     runtimeOnly 'org.yaml:snakeyaml'
+    runtimeOnly 'com.h2database:h2:2.3.232'
 
     testImplementation 'io.micronaut:micronaut-http-client'
     testImplementation 'io.micronaut.test:micronaut-test-junit5'

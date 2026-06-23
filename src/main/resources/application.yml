@@ -61,6 +61,17 @@ endpoints:
     enabled: true
     sensitive: false
 
+# Platform-auth storage (JilaliTalk accounts, sessions, the HelloTalk-token pool — see
+# com.jilali.auth). File-based H2 so accounts survive a restart without standing up a real
+# database server; swapping the URL to Postgres/MySQL later needs no code changes, only this
+# config and the driver dependency.
+datasources:
+  default:
+    url: jdbc:h2:file:${JILALI_DB_PATH:./data/jilalitalk};AUTO_SERVER=TRUE
+    driverClassName: org.h2.Driver
+    username: sa
+    password: ""
+
 # Application-specific knobs, bound via @ConfigurationProperties (JilaliProperties).
 jilali:
   # Auth token used when the frontend sends no authorization header.
