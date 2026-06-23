@@ -27,6 +27,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = RoomRealtimeEvent.WhiteboardDeactivated.class, name = "whiteboard_deactivated"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.MicOpened.class,          name = "mic_opened"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.MicClosed.class,          name = "mic_closed"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.ModUnmuted.class,         name = "mod_unmuted"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.RoomKick.class,           name = "room_kick"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.StageKick.class,           name = "stage_kick"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.ModAccepted.class,         name = "mod_accepted"),
@@ -51,6 +52,7 @@ public sealed interface RoomRealtimeEvent permits
     RoomRealtimeEvent.WhiteboardDeactivated,
     RoomRealtimeEvent.MicOpened,
     RoomRealtimeEvent.MicClosed,
+    RoomRealtimeEvent.ModUnmuted,
     RoomRealtimeEvent.RoomKick,
     RoomRealtimeEvent.StageKick,
     RoomRealtimeEvent.ModAccepted,
@@ -82,6 +84,14 @@ public sealed interface RoomRealtimeEvent permits
         String text,
         String msgType) {}
 
+    /**
+     * Carries every decoration field the live comment frame actually supplies (role, VIP, bubble
+     * skin + companion animal, family-group badge, nationality) — earlier this record only had
+     * id/userId/nickname/headUrl/text/ts/replyInfo, so a paying user's equipped bubble skin and
+     * FG badge silently vanished from their own LIVE messages, only reappearing after a refresh
+     * pulled the same comment back through the REST history endpoint, which always mapped these
+     * fields correctly.
+     */
     record CommentEvent(
         String id,
         String userId,
@@ -89,16 +99,40 @@ public sealed interface RoomRealtimeEvent permits
         String headUrl,
         String text,
         long ts,
-        ReplyInfoEvent replyInfo) {}
+        ReplyInfoEvent replyInfo,
+        String nationality,
+        int role,
+        int vipType,
+        int dayRankLevel,
+        int giftLevel,
+        int fgLevel,
+        String fgName,
+        boolean fgIsActive,
+        int bubbleId,
+        String bubbleUrl,
+        String bubbleColor,
+        int hitBad,
+        int bubbleAnimalType,
+        String bubbleAnimalUrl) {}
 
     record Comment(CommentEvent comment) implements RoomRealtimeEvent {}
 
     record GiftEvent(
         String sendUid,
         String sendNickname,
+        String sendHeadUrl,
+        String sendNation,
         String receiverUid,
         String receiverNickname,
-        String smallPic) {}
+        String receiverHeadUrl,
+        String receiverNation,
+        String smallPic,
+        long giftId,
+        int giftNumber,
+        long giftVal,
+        int vipType,
+        int giftLevel,
+        int dayRankLevel) {}
 
     record Gift(List<GiftEvent> gifts) implements RoomRealtimeEvent {}
 
@@ -113,6 +147,15 @@ public sealed interface RoomRealtimeEvent permits
     // Mic on/off (user-initiated, not mod-initiated)
     record MicOpened(String userId) implements RoomRealtimeEvent {}
     record MicClosed(String userId) implements RoomRealtimeEvent {}
+
+    /**
+     * Type 40 — a mod lifted a mute (the counterpart to {@code StageDeviceControl} on type 30).
+     * Deliberately not folded into {@link MicOpened}: the reference client (scriptv2.js:5262)
+     * explicitly does NOT flip the mic-on roster state here (that line is commented out) — being
+     * allowed to speak again is not the same as actively speaking, so this only ever drives a
+     * "you can speak now" toast for the affected user, never a roster update.
+     */
+    record ModUnmuted(String userId) implements RoomRealtimeEvent {}
 
     // Kicked from room
     record RoomKick(

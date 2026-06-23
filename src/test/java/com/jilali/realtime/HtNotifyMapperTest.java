@@ -52,16 +52,33 @@ class HtNotifyMapperTest {
 
     @Test
     void notifyType1WithGiftShapeMapsToGiftAndDisambiguatesFromJoin() {
+        // Shape matches a real captured LiveHub frame: gift_id/gift_number/gift_val/avatars/
+        // nations live on the per-user entry in `users[]`; vip_type/gift_level/day_rank_level
+        // are siblings of `users` on the outer notify_info, not duplicated per user.
         RoomRealtimeEvent event = mapper.map("""
-            {"event":{"notify_type":"1","notify_info":{"cname":"VR_1_2","type":1,"users":[
-              {"send_uid":"1","send_nickname":"A","receiver_uid":"2","receiver_nickname":"B","small_pic":"https://x/y.png"}
+            {"event":{"notify_type":"1","notify_info":{"cname":"VR_1_2","type":1,
+              "vip_type":3,"gift_level":19,"day_rank_level":9,"gift_id":0,"users":[
+              {"send_uid":"1","send_nickname":"A","send_head_url":"https://x/a.jpg","send_nation":"JP",
+               "receiver_uid":"2","receiver_nickname":"B","receiver_head_url":"https://x/b.jpg","receiver_nation":"IT",
+               "small_pic":"https://x/y.png","gift_id":1120,"gift_number":1,"gift_val":1}
             ]}},"msg_id":"m2"}
             """).orElseThrow();
 
         var gift = assertInstanceOf(RoomRealtimeEvent.Gift.class, event);
         assertEquals(1, gift.gifts().size());
-        assertEquals("A", gift.gifts().get(0).sendNickname());
-        assertEquals("B", gift.gifts().get(0).receiverNickname());
+        var g = gift.gifts().get(0);
+        assertEquals("A", g.sendNickname());
+        assertEquals("https://x/a.jpg", g.sendHeadUrl());
+        assertEquals("JP", g.sendNation());
+        assertEquals("B", g.receiverNickname());
+        assertEquals("https://x/b.jpg", g.receiverHeadUrl());
+        assertEquals("IT", g.receiverNation());
+        assertEquals(1120L, g.giftId());
+        assertEquals(1, g.giftNumber());
+        assertEquals(1L, g.giftVal());
+        assertEquals(3, g.vipType());
+        assertEquals(19, g.giftLevel());
+        assertEquals(9, g.dayRankLevel());
     }
 
     @Test
@@ -135,17 +152,40 @@ class HtNotifyMapperTest {
 
     @Test
     void notifyType25MapsToCommentIncludingReplyInfo() {
+        // Shape matches a real captured LiveHub frame: id/created_at/role/vip_type/bubble_*/
+        // fg_*/nationality all live on notify_info directly, not nested under msg as
+        // msg_id/send_ts (the previous, incorrect assumption — see mapComment()'s comment).
         RoomRealtimeEvent event = mapper.map("""
             {"event":{"notify_type":"25","notify_info":{
-              "user_id":"131331894","nickname":"Jilali","head_url":"https://h",
-              "msg":{"msg_id":"c1","send_ts":1750622060441,"text":{"text":"hello"},
+              "_id":"c1","created_at":1750622060,"user_id":"131331894","nickname":"Jilali","head_url":"https://h",
+              "nationality":"MA","role":3,"vip_type":2,"day_rank_level":5,"gift_level":7,
+              "fg_level":3,"fg_name":"Buddies","fg_is_active":true,
+              "bubble_id":4,"bubble_url":"https://bubble","bubble_color":"#abcdef",
+              "hit_bad":0,"bubble_animal_type":1,"bubble_animal_url":"https://animal",
+              "msg":{"text":{"text":"hello"},
                 "reply_info":{"msg_id":"c0","from_id":155790171,"from_nickname":"MD","text":"orig","msg_type":"text"}}
             }},"msg_id":"m11"}
             """).orElseThrow();
 
         var comment = assertInstanceOf(RoomRealtimeEvent.Comment.class, event).comment();
+        assertEquals("c1", comment.id());
+        assertEquals(1750622060_000L, comment.ts());
         assertEquals("hello", comment.text());
         assertEquals("MD", comment.replyInfo().fromNickname());
+        assertEquals("MA", comment.nationality());
+        assertEquals(3, comment.role());
+        assertEquals(2, comment.vipType());
+        assertEquals(5, comment.dayRankLevel());
+        assertEquals(7, comment.giftLevel());
+        assertEquals(3, comment.fgLevel());
+        assertEquals("Buddies", comment.fgName());
+        assertTrue(comment.fgIsActive());
+        assertEquals(4, comment.bubbleId());
+        assertEquals("https://bubble", comment.bubbleUrl());
+        assertEquals("#abcdef", comment.bubbleColor());
+        assertEquals(0, comment.hitBad());
+        assertEquals(1, comment.bubbleAnimalType());
+        assertEquals("https://animal", comment.bubbleAnimalUrl());
     }
 
     @Test
@@ -175,5 +215,21 @@ class HtNotifyMapperTest {
     void malformedJsonProducesAnErrorEventInsteadOfThrowing() {
         RoomRealtimeEvent event = mapper.map("not json").orElseThrow();
         assertInstanceOf(RoomRealtimeEvent.Error.class, event);
+    }
+
+    @Test
+    void notifyType2FromCmd17939EnabledToggleIsDroppedInsteadOfBecomingAUserQuit() {
+        // Real bug: LiveHub's `notify_type` is scoped per `cmd`. cmd 17939 carries room-wide
+        // "enabled" toggles on notify_type 1 and 2 with user_id = 0 — the same type code as a
+        // real quit (cmd 17923). Without the user_id != 0 guard (matching scriptv2.js:4944),
+        // every toggle would produce a phantom UserQuit("0"), which the frontend then renders
+        // as a duplicate "left room" card. The mapper must drop these silently.
+        RoomRealtimeEvent quit = mapper.map(
+            "{\"cmd\":17923,\"event\":{\"notify_type\":2,\"notify_info\":{\"cname\":\"VR_1\",\"leave_reason\":1,\"user_id\":166832448}},\"msg_id\":\"m\"}").orElseThrow();
+        assertEquals("166832448", assertInstanceOf(RoomRealtimeEvent.UserQuit.class, quit).userId());
+
+        assertTrue(mapper.map(
+            "{\"cmd\":17939,\"event\":{\"notify_type\":2,\"notify_info\":{\"cname\":\"VR_1\",\"enabled\":false,\"user_id\":0}},\"msg_id\":\"m\"}").isEmpty(),
+            "cmd 17939's enabled toggle (notify_type 2, user_id 0) must be dropped, not mapped to UserQuit(\"0\")");
     }
 }

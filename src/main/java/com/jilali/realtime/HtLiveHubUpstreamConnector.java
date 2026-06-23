@@ -9,7 +9,11 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
@@ -53,6 +57,14 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
      * for concurrent reuse, so one shared instance for the process lifetime is the fix.
      */
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
+
+    /**
+     * Temporary capture of every raw LiveHub frame, verbatim, for auditing real wire shapes
+     * per notify_type — remove once that's done. Deliberately every frame including
+     * heartbeat/ack noise, not just mapped events, since the point is to see what's actually
+     * on the wire rather than what {@link HtNotifyMapper} already assumes about it.
+     */
+    private static final Path CAPTURE_FILE = Path.of("/tmp/livehub-frames.jsonl");
 
     private final HtNotifyMapper mapper;
     private final ObjectMapper om;
@@ -146,6 +158,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
         if (log.isTraceEnabled()) {
             log.trace("LiveHub RX cname={}: {}", cname, text);
         }
+        captureRawFrame(text);
 
         var hbSec = mapper.heartbeatSec(text);
         if (hbSec.isPresent()) {
@@ -163,6 +176,15 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
             Consumer<RoomRealtimeEvent> l = eventListener;
             if (l != null) l.accept(event);
         });
+    }
+
+    private void captureRawFrame(String text) {
+        try {
+            String line = Instant.now() + " | cname=" + cname + " | " + text + System.lineSeparator();
+            Files.writeString(CAPTURE_FILE, line, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (Exception e) {
+            log.warn("Failed to capture LiveHub frame to {}: {}", CAPTURE_FILE, e.getMessage());
+        }
     }
 
     private void sendHeartbeat() {
