@@ -142,6 +142,9 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     public void close() {
         connected = false;
         cancelHeartbeat();
+        // Reset sendChain so any in-flight sends from the old connection cannot chain into
+        // a new connection's WebSocket after close() + connect() is called again.
+        sendChain = CompletableFuture.completedFuture(null);
         WebSocket s = this.ws;
         if (s != null) {
             try {

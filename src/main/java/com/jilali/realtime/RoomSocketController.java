@@ -69,6 +69,7 @@ public class RoomSocketController {
     public void onClose(String cname, WebSocketSession session) {
         Disposable subscription = subscriptions.remove(session.getId());
         if (subscription != null) subscription.dispose();
+        source.unsubscribe(cname);
         log.info("RoomSocketController: session '{}' unsubscribed from cname='{}'", session.getId(), cname);
     }
 

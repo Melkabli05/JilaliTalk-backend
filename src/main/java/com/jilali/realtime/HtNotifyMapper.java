@@ -89,6 +89,7 @@ public class HtNotifyMapper {
         JsonNode info = eventNode.path("notify_info");
 
         if (requiresUserId(type, info)) {
+            log.debug("LiveHub frame dropped: notify_type='{}' has user_id=0 (cmd-scoped noise event)", type);
             return Optional.empty();
         }
 
@@ -118,7 +119,10 @@ public class HtNotifyMapper {
                 case "48" -> new RoomRealtimeEvent.ModInvite(userId(info));
                 case "53" -> new RoomRealtimeEvent.Follow(textOr(info, "nickname", ""), info.path("status").asInt(0));
                 case "3" -> mapTypeThree(info, type, root);
-                default -> raw(type, root);
+                default -> {
+                    log.info("LiveHub: unrecognized notify_type '{}' falling through to raw — server may have added a new type", type);
+                    yield raw(type, root);
+                }
             };
             return Optional.ofNullable(event);
         } catch (Throwable t) {
