@@ -67,10 +67,6 @@ endpoints:
     enabled: true
     sensitive: false
 
-# Platform-auth storage (JilaliTalk accounts, sessions, the HelloTalk-token pool — see
-# com.jilali.auth). File-based H2 so accounts survive a restart without standing up a real
-# database server; swapping the URL to Postgres/MySQL later needs no code changes, only this
-# config and the driver dependency.
 datasources:
   default:
     url: jdbc:h2:file:${JILALI_DB_PATH:./data/jilalitalk};AUTO_SERVER=TRUE
@@ -78,11 +74,7 @@ datasources:
     username: sa
     password: ""
 
-# Application-specific knobs, bound via @ConfigurationProperties (JilaliProperties).
 jilali:
-  # Auth token used when the frontend sends no authorization header.
-  # Set LIVEHUB_AUTH_TOKEN environment variable in production.
-  default-auth-token: ${LIVEHUB_AUTH_TOKEN:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODQxMTExMTUsImlhdCI6MTc4MTUxOTExNSwic3JjIjoyLCJ1aWQiOjE2OTMzNTU2Mn0.hyCMYVKtndZH6NUsMWCWCRgE54QzkBai9psuociazsw}
   # Static public-key token for the HelloTalk translate service.
   # Set LIVEHUB_TRANSLATE_PUB_KEY environment variable in production.
   translate-pub-key: ${LIVEHUB_TRANSLATE_PUB_KEY:5b1040dac31a5c2ff33f14508213a01273c7a40f5e346640bbca9a3e4b933a50fef1b0f5e755a70a8873acddd85389e6c17d32bfcc878ec7832f7c21299c3724}
@@ -90,7 +82,7 @@ jilali:
   allowed-web-socket-origins:
     - "http://localhost:4200"
     - "http://localhost:4201"
-  # Inbound headers we forward verbatim to the upstream on every call.
+  # Inbound headers forwarded verbatim to upstream on every call.
   forwarded-headers:
     - authorization
     - x-ht-token

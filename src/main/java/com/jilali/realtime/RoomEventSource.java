@@ -1,33 +1,70 @@
 package com.jilali.realtime;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
-import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The room-event subscription surface {@link RoomSocketController} depends on. Exists
- * separately from {@link RoomRealtimeRegistry} so tests can substitute a fake via
- * {@code @Replaces(RoomRealtimeRegistry.class)} without touching the real LiveHub socket.
+ * Pub-sub bridge between browser WebSocket sessions and the LiveHub upstream per room.
+ *
+ * <p>Each {@link #subscribe} call registers one browser tab as a subscriber for a room. The first
+ * subscriber for a room opens the LiveHub upstream connection; the last subscriber to leave closes it.
+ * All subscriber tabs for the same room receive the same events forwarded from the single upstream.
  */
-public interface RoomEventSource {
+@Singleton
+public class RoomEventSource {
+
+    private static final Logger log = LoggerFactory.getLogger(RoomEventSource.class);
+
+    private final HtLiveHubUpstreamConnector upstream;
+    private final RoomSubscriberTracker tracker;
+    private final ObjectMapper om;
+
+    /** cname → per-room sink. One sink per live upstream connection. */
+    private final Map<String, Sinks.Many<RoomRealtimeEvent>> sinks = new ConcurrentHashMap<>();
+
+    public RoomEventSource(HtNotifyMapper mapper, ObjectMapper om) {
+        this.upstream = new HtLiveHubUpstreamConnector(mapper, om);
+        this.om = om;
+        this.tracker = new RoomSubscriberTracker();
+    }
 
     /**
-     * @param hostId per-room presence heartbeat target; pass {@code 0} for a subscriber that
-     *               should receive events but not drive the room's heartbeat (e.g. an
-     *               invisible/ghost join, mirroring the frontend's old visible-only guard).
-     * @param heartbeatSeconds upstream-configured heartbeat interval, or {@code <= 0} to use
-     *               the default.
-     * @param jilaliUserId the platform session's JilaliTalk user id, if any — lets the
-     *               registry open the LiveHub connection as this viewer's own HelloTalk
-     *               identity (when one is assigned in the token pool) instead of always
-     *               falling back to the shared default identity. Personally-targeted LiveHub
-     *               events (stage invite, mod invite) are only ever delivered to the
-     *               connection matching the real recipient's own uid — see
-     *               RoomRealtimeRegistry's class doc.
+     * Subscribe to events for room {@code cname}.
+     *
+     * @return a {@link Flux} that emits {@link RoomRealtimeEvent}s for this room.
      */
-    Flux<RoomRealtimeEvent> subscribe(String cname, long hostId, int busiType, long heartbeatSeconds,
-                                       Optional<Long> jilaliUserId);
+    public Flux<RoomRealtimeEvent> subscribe(String cname, long hostId, int busiType, long heartbeatSeconds) {
+        boolean first = tracker.subscribe(cname);
 
-    void unsubscribe(String cname, Optional<Long> jilaliUserId);
+        if (first) {
+            upstream.attach(
+                event -> sinkFor(cname).tryEmitNext(event),
+                () -> {
+                    log.info("RoomEventSource: upstream disconnected for cname='{}'", cname);
+                    sinkFor(cname).tryEmitComplete();
+                }
+            );
+            upstream.connect("0", cname, true);
+            log.info("RoomEventSource: opened upstream for cname='{}'", cname);
+        }
+
+        return sinkFor(cname).asFlux();
+    }
+
+    private Sinks.Many<RoomRealtimeEvent> sinkFor(String cname) {
+        return sinks.computeIfAbsent(cname, k -> {
+            Sinks.Many<RoomRealtimeEvent> sink = Sinks.many().multicast().directBestEffort();
+            return sink;
+        });
+    }
 }
