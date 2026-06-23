@@ -60,6 +60,26 @@ public class HelloTalkTokenPoolRepository {
         }
     }
 
+    /**
+     * The real HelloTalk uid behind this JilaliTalk user's assigned token, if any. Used by
+     * {@link com.jilali.realtime.RoomRealtimeRegistry} to open the LiveHub room WebSocket as
+     * the viewer's own identity instead of the shared {@code jilali.default-auth-token} —
+     * LiveHub's {@code /livehub/ws/conn} takes a bare {@code user_id} query param with no
+     * auth header at all, so this is the only piece of identity that connection needs.
+     */
+    public Optional<Long> findHelloTalkUidForUser(long userId) {
+        String sql = "SELECT hellotalk_uid FROM hellotalk_token_pool WHERE assigned_to_user_id = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? Optional.of(rs.getLong("hellotalk_uid")) : Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to look up assigned HelloTalk uid", e);
+        }
+    }
+
     /** Adds a manually-obtained real HelloTalk JWT to the pool, immediately claimable by the
      *  next registering (or currently unassigned) account. */
     public void addToken(long helloTalkUid, String jwt, String label) {

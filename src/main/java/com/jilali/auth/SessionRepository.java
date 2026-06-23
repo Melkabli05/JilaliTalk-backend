@@ -71,6 +71,28 @@ public class SessionRepository {
         }
     }
 
+    /**
+     * Resolves the HelloTalk UID for the session owner. Returns empty if the session does not
+     * exist, is expired, or has no assigned HelloTalk token.
+     */
+    public Optional<Long> resolveHelloTalkUid(String sessionId) {
+        String sql = """
+            SELECT ht.hellotalk_uid
+            FROM app_session s
+            JOIN hellotalk_token_pool ht ON ht.assigned_to_user_id = s.user_id
+            WHERE s.id = ? AND s.expires_at > CURRENT_TIMESTAMP
+            """;
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, sessionId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? Optional.of(rs.getLong("hellotalk_uid")) : Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to resolve HelloTalk UID for session", e);
+        }
+    }
+
     private static String randomId() {
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
