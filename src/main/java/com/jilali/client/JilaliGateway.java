@@ -202,6 +202,12 @@ public class JilaliGateway {
 
         String token = properties.defaultAuthToken();
         String deviceId = properties.deviceId();
+        // x-ht-uid must identify who is making this call (the shared service account the JWT
+        // authenticates as), never the profile being looked up — see currentUserId()'s doc
+        // comment for the same concern elsewhere in this class. Looking up any user other than
+        // the service account itself sent a mismatched x-ht-uid here, which is almost certainly
+        // why every userInfo() call upstream was rejected with BAD_REQUEST.
+        Long callerUid = currentUserId();
 
         HttpRequest<byte[]> httpRequest = HttpRequest.POST("/profile/v2/userinfo", encryptedPayload)
             .header("ht-content-type", "ht/encbin")
@@ -211,7 +217,7 @@ public class JilaliGateway {
             .header("Accept-Encoding", "gzip")
             .header("Accept-Language", "en-MA;q=1.0, fr-MA;q=0.9, ar-MA;q=0.8")
             .header("Cache-Control", "no-cache")
-            .header("User-Agent", "android;6.1.0;SM-A908N;11;" + userId)
+            .header("User-Agent", "android;6.1.0;SM-A908N;11;" + (callerUid != null ? callerUid : userId))
             .header("x-ht-version", "6.1.0")
             .header("x-ht-timezone", ".00")
             .header("x-ht-tzid", "Africa/Casablanca")
@@ -221,7 +227,7 @@ public class JilaliGateway {
             .header("x-ht-os-version", "11")
             .header("x-ht-os", "android")
             .header("x-ht-lang", "English")
-            .header("x-ht-uid", String.valueOf(userId))
+            .header("x-ht-uid", callerUid != null ? String.valueOf(callerUid) : "")
             .header("x-ht-did", deviceId)
             .header("x-ht-build", "135")
             .header("x-ht-token", "Bearer " + token)
