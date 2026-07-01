@@ -1,7 +1,7 @@
 FROM ghcr.io/graalvm/native-image-community:25-ol9 AS builder
 WORKDIR /workspace
 COPY . .
-RUN ./gradlew dockerPrepareContext --no-daemon
+RUN ./gradlew buildNativeLayersTask dockerPrepareContext --no-daemon
 
 FROM ghcr.io/graalvm/native-image-community:25-ol9 AS graalvm
 WORKDIR /home/app
