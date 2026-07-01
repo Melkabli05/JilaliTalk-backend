@@ -1,0 +1,9 @@
+.git
+.gradle
+.gitignore
+.superpowers
+build
+bin
+data
+docs
+*.md
