@@ -2,7 +2,6 @@ package com.jilali.im;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -73,8 +72,14 @@ class HtImUpstreamConnectorMappingTest {
     }
 
     @Test
-    void notifyTypeWithMissingUserIdIsDropped() throws Exception {
-        assertNull(map("{\"notify_type\":\"48\",\"notify_info\":{}}"));
+    void notifyType48WithNoUserIdFallsBackToConnectorsOwnUid() throws Exception {
+        // Real capture: HelloTalk never includes user_id on this personal channel — the invite
+        // is implicitly "you" — only cname and the inviting host_id are present.
+        ImRealtimeEvent event = map(
+            "{\"notify_type\":48,\"notify_info\":{\"cname\":\"VR_131331894_1782897947418799102\",\"host_id\":131331894}}");
+        var invite = assertInstanceOf(ImRealtimeEvent.ModInvite.class, event);
+        assertEquals("1", invite.userId()); // connector was constructed with userId=1L
+        assertEquals("VR_131331894_1782897947418799102", invite.cname());
     }
 
     @Test

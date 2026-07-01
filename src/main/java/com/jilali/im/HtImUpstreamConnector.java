@@ -257,6 +257,9 @@ class HtImUpstreamConnector implements AutoCloseable {
         try {
             JsonNode root = om.readTree(jsonStr);
             ImRealtimeEvent event = mapPushPayload(root, h);
+            log.info("IM: F2 push uid={} notify_type={} msg_type={} mapped={} raw={}",
+                userId, root.path("notify_type").asText(null), root.path("msg_type").asText(null),
+                event != null ? event.getClass().getSimpleName() : "DROPPED", jsonStr);
             if (event != null) emit(event);
         } catch (Exception e) {
             log.warn("IM: F2 JSON parse error: {}", e.getMessage());
@@ -396,7 +399,11 @@ class HtImUpstreamConnector implements AutoCloseable {
 
             JsonNode msgRoot = om.readTree(jsonStr);
             Header fakeHeader = new Header(PKT_PUSH, keyType, cmdId, 0, fromId, toId, bodyLen);
-            return mapPushPayload(msgRoot, fakeHeader);
+            ImRealtimeEvent event = mapPushPayload(msgRoot, fakeHeader);
+            log.info("IM: offline packet uid={} notify_type={} msg_type={} mapped={} raw={}",
+                userId, msgRoot.path("notify_type").asText(null), msgRoot.path("msg_type").asText(null),
+                event != null ? event.getClass().getSimpleName() : "DROPPED", jsonStr);
+            return event;
         } catch (Exception e) {
             log.debug("IM: decodeOfflinePacket error: {}", e.getMessage());
             return null;
@@ -465,36 +472,26 @@ class HtImUpstreamConnector implements AutoCloseable {
             return new ImRealtimeEvent.LiveRoomShared(fromNickname, cname, headUrl);
         }
 
-        // Personal room notify_type pushes — mirrors scriptv2.js startwebsock()'s type switch,
-        // received here on the same ht_im/sock channel with notify_info nested (no "event" wrapper,
-        // unlike the per-room LiveHub frames handled by HtNotifyMapper).
+        // Personal room notify_type pushes, received here on the same ht_im/sock channel with
+        // notify_info nested (no "event" wrapper, unlike the per-room LiveHub frames handled by
+        // HtNotifyMapper). Unlike the LiveHub broadcast shape, these carry no user_id at all —
+        // confirmed from a live capture of a real notify_type 48 push:
+        //   {"notify_type":48,"notify_info":{"cname":"VR_...","host_id":131331894}}
+        // There's no point telling an account who was invited on its own personal channel — it's
+        // implicitly this connector's own userId — so that's the fallback when the field is absent.
         JsonNode info = root.path("notify_info");
+        String selfId = String.valueOf(userId);
         switch (root.path("notify_type").asText("")) {
-            case "18": {
-                String userId = textOr(info, "user_id", "");
-                if (!userId.isEmpty()) return new ImRealtimeEvent.StageInvite(userId, textOr(info, "cname", ""));
-                break;
-            }
-            case "48": {
-                String userId = textOr(info, "user_id", "");
-                if (!userId.isEmpty()) return new ImRealtimeEvent.ModInvite(userId, textOr(info, "cname", ""));
-                break;
-            }
-            case "34": {
-                String userId = textOr(info, "user_id", "");
-                if (!userId.isEmpty()) return new ImRealtimeEvent.ModAccepted(userId);
-                break;
-            }
-            case "35": {
-                String userId = textOr(info, "user_id", "");
-                if (!userId.isEmpty()) return new ImRealtimeEvent.ModRemoved(userId);
-                break;
-            }
-            case "40": {
-                String userId = textOr(info, "user_id", "");
-                if (!userId.isEmpty()) return new ImRealtimeEvent.ModUnmuted(userId);
-                break;
-            }
+            case "18":
+                return new ImRealtimeEvent.StageInvite(textOr(info, "user_id", selfId), textOr(info, "cname", ""));
+            case "48":
+                return new ImRealtimeEvent.ModInvite(textOr(info, "user_id", selfId), textOr(info, "cname", ""));
+            case "34":
+                return new ImRealtimeEvent.ModAccepted(textOr(info, "user_id", selfId));
+            case "35":
+                return new ImRealtimeEvent.ModRemoved(textOr(info, "user_id", selfId));
+            case "40":
+                return new ImRealtimeEvent.ModUnmuted(textOr(info, "user_id", selfId));
             case "53":
                 return new ImRealtimeEvent.Follow(textOr(info, "nickname", ""), info.path("status").asInt(0));
             default:
