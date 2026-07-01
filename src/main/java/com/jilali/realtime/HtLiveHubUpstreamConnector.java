@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
 /**
  * One LiveHub upstream WebSocket connection per room. An unexpected close (network drop, not
@@ -73,8 +74,13 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
                 + "?user_id=" + s.userId + "&cname=" + s.cname + "&is_visitor=" + s.isVisitor),
                 new Listener())
             .thenAccept(sock -> {
+                if (intentionalClose) {
+                    try { sock.sendClose(1000, "normal"); } catch (Exception ignored) {}
+                    heartbeat.close();
+                    return;
+                }
                 this.ws = sock;
-                session = withConnected(session, true);
+                updateSession(cur -> withConnected(cur, true));
                 backoff.reset();
                 log.info("LiveHub WS connected cname={}", session.cname);
                 send(initFrame());
@@ -99,10 +105,9 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     @Override
     public void close() {
         intentionalClose = true;
-        Session s = session;
-        if (s == null) return;
-        session = withConnected(s, false);
-        heartbeat.stop();
+        if (session == null) return;
+        updateSession(s -> withConnected(s, false));
+        heartbeat.close();
         sender.reset();
         if (ws != null) {
             try { ws.sendClose(1000, "normal"); } catch (Exception ignored) {}
@@ -146,7 +151,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
 
         mapper.heartbeatSec(text)
             .ifPresentOrElse(hbSec -> {
-                    session = withHeartbeatInterval(session, hbSec);
+                    updateSession(s -> withHeartbeatInterval(s, hbSec));
                     sendHeartbeat();
                     long delaySec = Math.max(1, hbSec - 5);
                     heartbeat.start(Duration.ofSeconds(delaySec), Duration.ofSeconds(hbSec), this::sendHeartbeat);
@@ -179,6 +184,12 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
             e -> log.warn("LiveHub WS send failed cname={}: {}", session.cname, e.getMessage()));
     }
 
+    /** Atomically applies a read-modify-write update to {@link #session} under a single lock,
+     *  so concurrent callers (WS reader thread, close(), Listener.onClose) never lose an update. */
+    private synchronized void updateSession(UnaryOperator<Session> f) {
+        session = f.apply(session);
+    }
+
     private static Session withConnected(Session s, boolean connected) {
         return new Session(s.userId, s.cname, s.isVisitor, s.heartbeatIntervalSec, connected);
     }
@@ -207,7 +218,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
 
         @Override
         public CompletionStage<?> onClose(WebSocket ws, int statusCode, String reason) {
-            session = withConnected(session, false);
+            updateSession(s -> withConnected(s, false));
             heartbeat.stop();
             log.info("LiveHub WS closed cname={} status={} reason={}", session.cname, statusCode, reason);
             if (intentionalClose) {

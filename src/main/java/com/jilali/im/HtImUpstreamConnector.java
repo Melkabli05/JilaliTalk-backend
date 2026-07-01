@@ -93,6 +93,11 @@ class HtImUpstreamConnector implements AutoCloseable {
         return HTTP_CLIENT.newWebSocketBuilder()
             .buildAsync(URI.create(IM_WS_URL + "?userid=" + userId), new Listener())
             .thenAccept(sock -> {
+                if (intentionalClose) {
+                    try { sock.sendClose(1000, "normal"); } catch (Exception ignored) {}
+                    heartbeat.close();
+                    return;
+                }
                 this.ws        = sock;
                 this.connected = true;
                 backoff.reset();
@@ -120,7 +125,7 @@ class HtImUpstreamConnector implements AutoCloseable {
     public void close() {
         intentionalClose = true;
         connected = false;
-        heartbeat.stop();
+        heartbeat.close();
         sender.reset();
         WebSocket sock = ws;
         if (sock != null) {

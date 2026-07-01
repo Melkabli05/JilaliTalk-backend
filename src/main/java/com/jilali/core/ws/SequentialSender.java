@@ -23,7 +23,7 @@ public final class SequentialSender {
     }
 
     /** Reset the chain after a reconnect where in-flight sends are now moot. */
-    public void reset() {
+    public synchronized void reset() {
         chain = CompletableFuture.completedFuture(null);
     }
 }
