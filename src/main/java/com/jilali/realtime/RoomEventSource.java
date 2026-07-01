@@ -21,6 +21,7 @@ public class RoomEventSource {
     private static final Logger log = LoggerFactory.getLogger(RoomEventSource.class);
 
     private final HtNotifyMapper mapper;
+    private final ObjectMapper om;
     private final String connectorUserId;
     private final Map<String, HtLiveHubUpstreamConnector> connectors = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
@@ -28,6 +29,7 @@ public class RoomEventSource {
 
     public RoomEventSource(HtNotifyMapper mapper, JilaliProperties properties, ObjectMapper om) {
         this.mapper = mapper;
+        this.om = om;
         this.connectorUserId = UidExtractor.uidAsString(properties.defaultAuthToken(), om);
         log.info("RoomEventSource: connector userId={}", connectorUserId);
     }
@@ -37,7 +39,7 @@ public class RoomEventSource {
             .incrementAndGet() == 1;
 
         if (first) {
-            HtLiveHubUpstreamConnector upstream = new HtLiveHubUpstreamConnector(mapper);
+            HtLiveHubUpstreamConnector upstream = new HtLiveHubUpstreamConnector(mapper, om);
             connectors.put(cname, upstream);
 
             Sinks.Many<RoomRealtimeEvent> sink = sinkFor(cname);
