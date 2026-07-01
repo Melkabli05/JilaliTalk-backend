@@ -4,8 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.DeflaterOutputStream;
+import java.util.zip.Inflater;
 
 /** Static helpers for building and parsing the 20-byte-header binary packets used by HelloTalk's ht_im/sock. */
 final class HtImPacketFramer {
@@ -95,6 +97,35 @@ final class HtImPacketFramer {
         } catch (IOException e) {
             throw new RuntimeException("deflate failed", e);
         }
+    }
+
+    /** Copy the payload region (after the 20-byte header) out of a raw inbound packet. */
+    static byte[] copyPayload(byte[] data, int payloadLen) {
+        byte[] payload = new byte[payloadLen];
+        System.arraycopy(data, HEADER_LEN, payload, 0, payloadLen);
+        return payload;
+    }
+
+    /** Zlib-inflate a byte array; if it isn't zlib-compressed (doesn't start with 0x78),
+     *  returns it unchanged. Tries both wrapped and raw-deflate modes since HelloTalk's
+     *  server has been observed sending both. */
+    static byte[] inflate(byte[] data) {
+        if (data == null || data.length == 0) return data;
+        if ((data[0] & 0xFF) != 0x78) return data; // not zlib compressed
+
+        for (boolean nowrap : new boolean[]{false, true}) {
+            try {
+                Inflater inf = new Inflater(nowrap);
+                inf.setInput(data);
+                byte[] out = new byte[data.length * 8];
+                int n = inf.inflate(out);
+                inf.end();
+                return Arrays.copyOf(out, n);
+            } catch (Exception ignored) {
+                // try the other mode
+            }
+        }
+        return null;
     }
 
     /** Parse the 20-byte header from an inbound binary packet. Returns null if data is too short. */
