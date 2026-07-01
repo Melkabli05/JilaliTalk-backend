@@ -9,6 +9,6 @@ BASE commit: ee3bd0e (fix(im): mod-invite/stage-invite notify pushes carry no us
 - [x] Task 4: 2619309 — Approved HtImNotifyMapper — pure JSON-to-event mapping
 - [x] Task 5: 1d85727 — Approved Rewrite HtImUpstreamConnector (slim + reconnect)
 - [x] Task 6: f0a5a45 — Approved Rewrite HtLiveHubUpstreamConnector (safe frames + reconnect)
-- [ ] Task 7: Full-repo verification
+- [x] Task 7: Approved — Full-repo verification (clean build, 66 tests 0 failures, no dead code, docs committed)
 
 
