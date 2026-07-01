@@ -1,9 +1,13 @@
+// src/main/java/com/jilali/im/HtImUpstreamConnector.java
 package com.jilali.im;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jilali.core.ws.ExponentialBackoff;
+import com.jilali.core.ws.HeartbeatPump;
+import com.jilali.core.ws.SequentialSender;
 import com.jilali.crypto.ApkSignatureGenerator;
-import com.jilali.crypto.QqTeaCipher;
+import com.jilali.im.HtImFrameDecoder.F2Push;
 import com.jilali.im.dto.ImRealtimeEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,17 +16,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.zip.Inflater;
 
 import static com.jilali.im.HtImPacketFramer.*;
 
@@ -31,36 +31,50 @@ import static com.jilali.im.HtImPacketFramer.*;
  * Sends the login packet on connect, keeps a 30-second heartbeat, decrypts 0xF2 push
  * packets with the QQTEA session key received in the 0xF1 login response, and maps them
  * to {@link ImRealtimeEvent}s for downstream subscribers.
+ *
+ * <p>Byte-level decoding lives in {@link HtImFrameDecoder}; JSON-to-event mapping lives in
+ * {@link HtImNotifyMapper}. This class owns only the WebSocket lifecycle, reconnection, and
+ * dispatch between them. An unexpected close (network drop, not our own {@link #close()})
+ * triggers an internal reconnect loop with capped exponential backoff — {@link #connect()}'s
+ * returned future only ever reflects the first attempt, so {@code ImEventSource}'s existing
+ * failure handling for "upstream unreachable from the start" is unaffected. This reconnect
+ * loop is the only one in play here — {@code ImEventSource} does not itself retry, so a
+ * future change adding retry there too would stack two independent backoff loops.
  */
 class HtImUpstreamConnector implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(HtImUpstreamConnector.class);
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
     private static final String IM_WS_URL = "wss://api-global.hellotalk8.com/ht_im/sock";
+    private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
 
     private final long userId;
     private final String jwt;
     private final String deviceId;
     private final String deviceModel;
     private final ObjectMapper om;
+    private final HtImFrameDecoder decoder;
     private final HtImNotifyMapper notifyMapper;
+
+    private final SequentialSender sender = new SequentialSender();
+    private final HeartbeatPump heartbeat = new HeartbeatPump("im-hb");
+    private final ExponentialBackoff backoff = new ExponentialBackoff(Duration.ofSeconds(1), Duration.ofSeconds(30));
 
     private volatile Consumer<ImRealtimeEvent> eventListener;
     private volatile Runnable disconnectListener;
 
     private volatile WebSocket ws;
     private volatile boolean connected;
+    private volatile boolean intentionalClose;
     private volatile byte[] sessionKey;
-    private volatile ScheduledFuture<?> heartbeatFuture;
-    private volatile ScheduledExecutorService heartbeatScheduler;
-    private volatile CompletableFuture<WebSocket> sendChain = CompletableFuture.completedFuture(null);
 
     HtImUpstreamConnector(long userId, String jwt, String deviceId, String deviceModel, ObjectMapper om) {
-        this.userId      = userId;
-        this.jwt         = jwt;
-        this.deviceId    = deviceId;
-        this.deviceModel = deviceModel;
-        this.om          = om;
+        this.userId       = userId;
+        this.jwt          = jwt;
+        this.deviceId     = deviceId;
+        this.deviceModel  = deviceModel;
+        this.om           = om;
+        this.decoder      = new HtImFrameDecoder(om);
         this.notifyMapper = new HtImNotifyMapper(userId);
     }
 
@@ -70,30 +84,47 @@ class HtImUpstreamConnector implements AutoCloseable {
     }
 
     CompletableFuture<Void> connect() {
-        this.heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(
-            Thread.ofVirtual().name("im-hb").factory());
-
+        this.intentionalClose = false;
         log.info("IM WS connecting uid={}", userId);
+        return attemptConnect();
+    }
 
+    private CompletableFuture<Void> attemptConnect() {
         return HTTP_CLIENT.newWebSocketBuilder()
             .buildAsync(URI.create(IM_WS_URL + "?userid=" + userId), new Listener())
             .thenAccept(sock -> {
                 this.ws        = sock;
                 this.connected = true;
+                backoff.reset();
                 log.info("IM WS connected uid={}", userId);
                 sendLoginPacket(sock);
                 sock.request(1);
             });
     }
 
+    private void reconnectInBackground() {
+        if (intentionalClose) return;
+        Duration delay = backoff.nextDelay();
+        log.info("IM WS reconnecting uid={} in {}ms", userId, delay.toMillis());
+        CompletableFuture.runAsync(() -> {
+            if (intentionalClose) return;
+            attemptConnect().exceptionally(ex -> {
+                log.warn("IM WS reconnect attempt failed uid={}: {}", userId, ex.getMessage());
+                reconnectInBackground();
+                return null;
+            });
+        }, CompletableFuture.delayedExecutor(delay.toMillis(), TimeUnit.MILLISECONDS));
+    }
+
     @Override
     public void close() {
+        intentionalClose = true;
         connected = false;
-        cancelHeartbeat();
-        sendChain = CompletableFuture.completedFuture(null);
+        heartbeat.stop();
+        sender.reset();
         WebSocket sock = ws;
         if (sock != null) {
-            try { sock.sendClose(1000, "normal"); } catch (Exception _) {}
+            try { sock.sendClose(1000, "normal"); } catch (Exception ignored) {}
         }
     }
 
@@ -120,14 +151,14 @@ class HtImUpstreamConnector implements AutoCloseable {
                 .put("os_lang",              "en")
                 .put("os_version",           "11")
                 .put("terminal_type",         1));
-            sendBinary(sock, buildPacket(userId, CMD_LOGIN, payload));
+            sendBinary(buildPacket(userId, CMD_LOGIN, payload));
         } catch (Exception e) {
             log.error("IM: failed to build login packet: {}", e.getMessage());
             emit(new ImRealtimeEvent.Error("IM login build failed: " + e.getMessage()));
         }
     }
 
-    // ── packet handling ──────────────────────────────────────────────────────
+    // ── packet dispatch ──────────────────────────────────────────────────────
 
     private void handlePacket(byte[] data) {
         Header h = parseHeader(data);
@@ -149,27 +180,16 @@ class HtImUpstreamConnector implements AutoCloseable {
             return;
         }
 
-        byte[] raw = copyPayload(data, payloadLen);
-        byte[] decompressed = inflate(raw);
-        if (decompressed == null) return;
-
-        String text = new String(decompressed, StandardCharsets.UTF_8).replace("\0", "").trim();
-        if (!text.startsWith("{")) return;
-
-        try {
-            JsonNode root = om.readTree(text);
+        Optional<JsonNode> root = decoder.decodeF1(data, payloadLen);
+        root.ifPresent(json -> {
             if (h.cmdId() == CMD_OFFLINE_RESPONSE) {
-                handleOfflineResponse(root);
-                return;
+                handleOfflineResponse(json);
+            } else if (h.cmdId() == CMD_GROUP_RESPONSE) {
+                handleGroupResponse(json);
+            } else {
+                handleLoginResponse(json);
             }
-            if (h.cmdId() == CMD_GROUP_RESPONSE) {
-                handleGroupResponse(root);
-                return;
-            }
-            handleLoginResponse(root);
-        } catch (Exception e) {
-            log.warn("IM: F1 JSON parse error: {}", e.getMessage());
-        }
+        });
     }
 
     private void handleLoginResponse(JsonNode root) {
@@ -193,7 +213,7 @@ class HtImUpstreamConnector implements AutoCloseable {
             this.sessionKey = key.getBytes(StandardCharsets.UTF_8);
             log.info("IM: session key captured uid={}", userId);
             emit(new ImRealtimeEvent.ConnectionState("connected"));
-            scheduleHeartbeat();
+            heartbeat.start(HEARTBEAT_INTERVAL, this::sendPing);
             // Proactively request offline DMs — two passes matching old frontend onSessionReady
             sendOfflineSyncRequest(0, CMD_OFFLINE_SYNC,      0xF0);
             sendOfflineSyncRequest(0, CMD_OFFLINE_SYNC_PAGE, 0xF2);
@@ -202,90 +222,50 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     private void handleF2(Header h, byte[] data, int payloadLen) {
         // Always ACK first
-        sendBinary(ws, buildAck(data));
+        sendBinary(buildAck(data));
 
-        byte[] key = sessionKey;
-        if (key == null || payloadLen == 0) return;
+        F2Push push = decoder.decodeF2(data, payloadLen, sessionKey);
+        dispatchPush(push, h);
+    }
 
-        byte[] encPayload = copyPayload(data, payloadLen);
-        byte[] decrypted;
-        try {
-            decrypted = QqTeaCipher.decrypt(encPayload, key);
-        } catch (Exception e) {
-            log.warn("IM: F2 QQTEA decrypt failed: {}", e.getMessage());
-            return;
-        }
-        if (decrypted == null || decrypted.length == 0) return;
-
-        int firstByte = decrypted[0] & 0xFF;
-
-        // Read receipt (0x25): bytes 2..38 contain msgId
-        if (firstByte == 0x25) {
-            if (decrypted.length >= 38) {
-                String msgId = new String(decrypted, 2, 36, StandardCharsets.UTF_8)
-                    .replace("\0", "").trim();
-                emit(new ImRealtimeEvent.ReadReceipt(msgId));
+    /** @return true if this push resulted in an emitted {@link ImRealtimeEvent}. */
+    private boolean dispatchPush(F2Push push, Header h) {
+        switch (push) {
+            case F2Push.Receipt r -> {
+                emit(new ImRealtimeEvent.ReadReceipt(r.msgId()));
+                return true;
             }
-            return;
-        }
-
-        // 0x08 = "you have new messages" poke — respond with offline sync request
-        if (firstByte == 0x08) {
-            log.debug("IM: F2 0x08 poke uid={} — triggering offline sync", userId);
-            sendOfflineSyncRequest(0, CMD_OFFLINE_SYNC, 0xF0);
-            return;
-        }
-
-        byte[] finalBytes;
-        if (firstByte == 0x78) {
-            finalBytes = inflate(decrypted);
-            if (finalBytes == null) { log.warn("IM: F2 inflate failed"); return; }
-        } else if (firstByte == 0x7B) {
-            finalBytes = decrypted; // JSON directly ('{')
-        } else {
-            // Log hex bytes so we can analyze unknown push types
-            StringBuilder hex = new StringBuilder();
-            int maxBytes = Math.min(decrypted.length, 64);
-            for (int i = 0; i < maxBytes; i++) {
-                hex.append(String.format("%02x", decrypted[i] & 0xFF));
-                if (i < maxBytes - 1) hex.append(' ');
+            case F2Push.Poke ignored -> {
+                log.debug("IM: F2 0x08 poke uid={} — triggering offline sync", userId);
+                sendOfflineSyncRequest(0, CMD_OFFLINE_SYNC, 0xF0);
+                return false;
             }
-            log.info("IM: F2 unknown first byte 0x{} uid={} len={} hex=[{}]",
-                Integer.toHexString(firstByte), userId, decrypted.length, hex);
-            return;
-        }
-
-        String jsonStr = new String(finalBytes, StandardCharsets.UTF_8).replace("\0", "");
-        try {
-            JsonNode root = om.readTree(jsonStr);
-            ImRealtimeEvent event = notifyMapper.map(root, h);
-            log.info("IM: F2 push uid={} notify_type={} msg_type={} mapped={} raw={}",
-                userId, root.path("notify_type").asText(null), root.path("msg_type").asText(null),
-                event != null ? event.getClass().getSimpleName() : "DROPPED", jsonStr);
-            if (event != null) emit(event);
-        } catch (Exception e) {
-            log.warn("IM: F2 JSON parse error: {}", e.getMessage());
+            case F2Push.Json j -> {
+                ImRealtimeEvent event = notifyMapper.map(j.root(), h);
+                log.info("IM: F2 push uid={} notify_type={} msg_type={} mapped={} raw={}",
+                    userId, j.root().path("notify_type").asText(null), j.root().path("msg_type").asText(null),
+                    event != null ? event.getClass().getSimpleName() : "DROPPED", j.root());
+                if (event != null) { emit(event); return true; }
+                return false;
+            }
+            case F2Push.Unknown u -> {
+                log.info("IM: F2 unknown first byte 0x{} uid={} len={} hex=[{}]",
+                    Integer.toHexString(u.firstByte()), userId, u.bytes().length, toHex(u.bytes()));
+                return false;
+            }
+            case F2Push.DecryptFailed ignored -> {
+                log.warn("IM: F2 QQTEA decrypt failed uid={}", userId);
+                return false;
+            }
+            case F2Push.Ignored ignored -> {
+                return false;
+            }
         }
     }
 
     private void handleTyping(Header h, byte[] data, int payloadLen) {
         if (h.cmdId() != CMD_TYPING) return;
-
-        byte[] payload = copyPayload(data, payloadLen);
-        byte[] key = sessionKey;
-        if (key != null && h.keyType() == 1 && payload.length > 0) {
-            try {
-                byte[] dec = QqTeaCipher.decrypt(payload, key);
-                if (dec != null) payload = dec;
-            } catch (Exception _) {}
-        }
-        if (payload.length > 0 && (payload[0] & 0xFF) == 0x78) {
-            byte[] inflated = inflate(payload);
-            if (inflated != null) payload = inflated;
-        }
-
-        // status at LE uint16 offset 4: 1 = typing, 0 = stopped
-        boolean isTyping = payload.length < 6 || ((payload[4] & 0xFF) | ((payload[5] & 0xFF) << 8)) == 1;
+        boolean isTyping = decoder.decodeTypingStatus(data, payloadLen, sessionKey, h.keyType());
         emit(new ImRealtimeEvent.TypingIndicator(String.valueOf(h.fromId()), isTyping));
     }
 
@@ -295,7 +275,7 @@ class HtImUpstreamConnector implements AutoCloseable {
         try {
             byte[] jsonBody = om.writeValueAsBytes(om.createObjectNode().put("last_id", lastId));
             byte[] compressed = deflate(jsonBody);
-            sendBinary(ws, buildPacket(userId, cmdId, flag, compressed));
+            sendBinary(buildPacket(userId, cmdId, flag, compressed));
             log.info("IM: sent offline sync cmdId={} flag=0x{} last_id={}", cmdId, Integer.toHexString(flag), lastId);
         } catch (Exception e) {
             log.warn("IM: failed to send offline sync request: {}", e.getMessage());
@@ -315,8 +295,10 @@ class HtImUpstreamConnector implements AutoCloseable {
         for (JsonNode item : packetList) {
             String b64 = item.asText(null);
             if (b64 == null || b64.isEmpty()) continue;
-            ImRealtimeEvent event = decodeOfflinePacket(b64);
-            if (event != null) { emit(event); emitted++; }
+            Optional<HtImFrameDecoder.OfflinePacket> offline = decoder.decodeOfflinePacket(b64, sessionKey);
+            if (offline.isPresent() && dispatchPush(offline.get().body(), offline.get().header())) {
+                emitted++;
+            }
         }
         log.info("IM: offline response {} packets, emitted {} events uid={}", packetList.size(), emitted, userId);
 
@@ -348,101 +330,18 @@ class HtImUpstreamConnector implements AutoCloseable {
         log.info("IM: group sync response {} msgs, emitted {} uid={}", msgs.size(), emitted, userId);
     }
 
-    private ImRealtimeEvent decodeOfflinePacket(String base64str) {
-        try {
-            byte[] raw = Base64.getDecoder().decode(base64str);
-            if (raw.length < HEADER_LEN) return null;
-
-            ByteBuffer buf = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN);
-            int keyType  = buf.get(2) & 0xFF;
-            int cmdId    = buf.getShort(4) & 0xFFFF;
-            long fromId  = buf.getInt(8) & 0xFFFFFFFFL;
-            long toId    = buf.getInt(12) & 0xFFFFFFFFL;
-            int bodyLen  = Math.max(0, Math.min(buf.getInt(16), raw.length - HEADER_LEN));
-
-            byte[] payload = new byte[bodyLen];
-            System.arraycopy(raw, HEADER_LEN, payload, 0, bodyLen);
-            if (payload.length == 0) return null;
-
-            // Decrypt if encrypted
-            byte[] key = sessionKey;
-            if (keyType == 1 && key != null) {
-                try {
-                    byte[] dec = QqTeaCipher.decrypt(payload, key);
-                    if (dec != null && dec.length > 0) payload = dec;
-                } catch (Exception _) {}
-            }
-
-            int firstByte = payload[0] & 0xFF;
-
-            // Read receipt
-            if (firstByte == 0x25) {
-                if (payload.length >= 38) {
-                    String msgId = new String(payload, 2, 36, StandardCharsets.UTF_8)
-                        .replace("\0", "").trim();
-                    return new ImRealtimeEvent.ReadReceipt(msgId);
-                }
-                return null;
-            }
-
-            byte[] finalBytes;
-            if (firstByte == 0x78) {
-                finalBytes = inflate(payload);
-                if (finalBytes == null) return null;
-            } else if (firstByte == 0x7B) {
-                finalBytes = payload;
-            } else {
-                return null;
-            }
-
-            String jsonStr = new String(finalBytes, StandardCharsets.UTF_8)
-                .replace("\0", "").trim();
-            if (!jsonStr.startsWith("{")) return null;
-
-            JsonNode msgRoot = om.readTree(jsonStr);
-            Header fakeHeader = new Header(PKT_PUSH, keyType, cmdId, 0, fromId, toId, bodyLen);
-            ImRealtimeEvent event = notifyMapper.map(msgRoot, fakeHeader);
-            log.info("IM: offline packet uid={} notify_type={} msg_type={} mapped={} raw={}",
-                userId, msgRoot.path("notify_type").asText(null), msgRoot.path("msg_type").asText(null),
-                event != null ? event.getClass().getSimpleName() : "DROPPED", jsonStr);
-            return event;
-        } catch (Exception e) {
-            log.debug("IM: decodeOfflinePacket error: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    // ── heartbeat ────────────────────────────────────────────────────────────
-
-    private void scheduleHeartbeat() {
-        heartbeatFuture = heartbeatScheduler.scheduleAtFixedRate(
-            this::sendPing, 30, 30, TimeUnit.SECONDS);
-    }
+    // ── heartbeat / send ─────────────────────────────────────────────────────
 
     private void sendPing() {
-        if (!connected) return;
-        sendBinary(ws, buildHeartbeat(userId));
+        if (connected) sendBinary(buildHeartbeat(userId));
     }
 
-    private void cancelHeartbeat() {
-        ScheduledFuture<?> f = heartbeatFuture;
-        if (f != null) { f.cancel(false); heartbeatFuture = null; }
-        ScheduledExecutorService s = heartbeatScheduler;
-        if (s != null) { s.shutdownNow(); heartbeatScheduler = null; }
-    }
-
-    // ── send ─────────────────────────────────────────────────────────────────
-
-    private void sendBinary(WebSocket sock, byte[] data) {
+    private void sendBinary(byte[] data) {
+        WebSocket sock = this.ws;
         if (sock == null || !connected) return;
         ByteBuffer buf = ByteBuffer.wrap(data);
-        sendChain = sendChain
-            .handle((_, _) -> null)
-            .thenCompose(_ -> sock.sendBinary(buf, true))
-            .exceptionally(e -> {
-                log.warn("IM WS send failed uid={}: {}", userId, e.getMessage());
-                return null;
-            });
+        sender.enqueue(() -> sock.sendBinary(buf, true),
+            e -> log.warn("IM WS send failed uid={}: {}", userId, e.getMessage()));
     }
 
     private void emit(ImRealtimeEvent event) {
@@ -452,35 +351,19 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     // ── utilities ────────────────────────────────────────────────────────────
 
-    private static byte[] copyPayload(byte[] data, int payloadLen) {
-        byte[] payload = new byte[payloadLen];
-        System.arraycopy(data, HEADER_LEN, payload, 0, payloadLen);
-        return payload;
-    }
-
-    private static byte[] inflate(byte[] data) {
-        if (data == null || data.length == 0) return data;
-        if ((data[0] & 0xFF) != 0x78) return data; // not zlib compressed
-
-        // Try standard zlib inflate, then raw inflate
-        for (boolean nowrap : new boolean[]{false, true}) {
-            try {
-                Inflater inf = new Inflater(nowrap);
-                inf.setInput(data);
-                byte[] out = new byte[data.length * 8];
-                int n = inf.inflate(out);
-                inf.end();
-                byte[] result = new byte[n];
-                System.arraycopy(out, 0, result, 0, n);
-                return result;
-            } catch (Exception _) {}
-        }
-        return null;
-    }
-
     private static String textOr(JsonNode node, String field, String fallback) {
         JsonNode n = node.get(field);
         return (n != null && !n.isNull()) ? n.asText() : fallback;
+    }
+
+    private static String toHex(byte[] bytes) {
+        StringBuilder hex = new StringBuilder();
+        int maxBytes = Math.min(bytes.length, 64);
+        for (int i = 0; i < maxBytes; i++) {
+            hex.append(String.format("%02x", bytes[i] & 0xFF));
+            if (i < maxBytes - 1) hex.append(' ');
+        }
+        return hex.toString();
     }
 
     // ── WebSocket.Listener ───────────────────────────────────────────────────
@@ -506,10 +389,14 @@ class HtImUpstreamConnector implements AutoCloseable {
         @Override
         public CompletionStage<?> onClose(WebSocket ws, int statusCode, String reason) {
             connected = false;
-            cancelHeartbeat();
+            heartbeat.stop();
             log.info("IM WS closed uid={} status={} reason={}", userId, statusCode, reason);
-            Runnable l = disconnectListener;
-            if (l != null) l.run();
+            if (intentionalClose) {
+                Runnable l = disconnectListener;
+                if (l != null) l.run();
+            } else {
+                reconnectInBackground();
+            }
             return CompletableFuture.completedFuture(null);
         }
 
