@@ -43,6 +43,7 @@ class HtImUpstreamConnector implements AutoCloseable {
     private final String deviceId;
     private final String deviceModel;
     private final ObjectMapper om;
+    private final HtImNotifyMapper notifyMapper;
 
     private volatile Consumer<ImRealtimeEvent> eventListener;
     private volatile Runnable disconnectListener;
@@ -60,6 +61,7 @@ class HtImUpstreamConnector implements AutoCloseable {
         this.deviceId    = deviceId;
         this.deviceModel = deviceModel;
         this.om          = om;
+        this.notifyMapper = new HtImNotifyMapper(userId);
     }
 
     void attach(Consumer<ImRealtimeEvent> eventListener, Runnable disconnectListener) {
@@ -256,7 +258,7 @@ class HtImUpstreamConnector implements AutoCloseable {
         String jsonStr = new String(finalBytes, StandardCharsets.UTF_8).replace("\0", "");
         try {
             JsonNode root = om.readTree(jsonStr);
-            ImRealtimeEvent event = mapPushPayload(root, h);
+            ImRealtimeEvent event = notifyMapper.map(root, h);
             log.info("IM: F2 push uid={} notify_type={} msg_type={} mapped={} raw={}",
                 userId, root.path("notify_type").asText(null), root.path("msg_type").asText(null),
                 event != null ? event.getClass().getSimpleName() : "DROPPED", jsonStr);
@@ -399,7 +401,7 @@ class HtImUpstreamConnector implements AutoCloseable {
 
             JsonNode msgRoot = om.readTree(jsonStr);
             Header fakeHeader = new Header(PKT_PUSH, keyType, cmdId, 0, fromId, toId, bodyLen);
-            ImRealtimeEvent event = mapPushPayload(msgRoot, fakeHeader);
+            ImRealtimeEvent event = notifyMapper.map(msgRoot, fakeHeader);
             log.info("IM: offline packet uid={} notify_type={} msg_type={} mapped={} raw={}",
                 userId, msgRoot.path("notify_type").asText(null), msgRoot.path("msg_type").asText(null),
                 event != null ? event.getClass().getSimpleName() : "DROPPED", jsonStr);
@@ -408,110 +410,6 @@ class HtImUpstreamConnector implements AutoCloseable {
             log.debug("IM: decodeOfflinePacket error: {}", e.getMessage());
             return null;
         }
-    }
-
-    // ── JSON → ImRealtimeEvent mapping ──────────────────────────────────────
-
-    ImRealtimeEvent mapPushPayload(JsonNode root, Header h) {
-        if (root.has("msg_type")) {
-            return switch (root.path("msg_type").asText()) {
-                case "text"              -> mapText(root, h);
-                case "image"             -> mapImage(root, h);
-                case "gift"              -> mapGift(root, h);
-                case "introduction"      -> mapIntro(root, h);
-                case "new_voice_visitor" -> mapProfileVisit(root);
-                default                  -> null;
-            };
-        }
-        if (root.has("notify_type")) return mapNotify(root, h);
-        return null;
-    }
-
-    private ImRealtimeEvent mapText(JsonNode root, Header h) {
-        String fromId = textOr(root, "from_id", String.valueOf(h.fromId()));
-        JsonNode t = root.path("text");
-        String text = t.isObject() ? textOr(t, "text", "") : t.asText("");
-        long ts = root.path("ts").asLong(System.currentTimeMillis());
-        return new ImRealtimeEvent.TextMessage(fromId, text, ts);
-    }
-
-    private ImRealtimeEvent mapImage(JsonNode root, Header h) {
-        String fromId = textOr(root, "from_id", String.valueOf(h.fromId()));
-        String url = root.path("image").path("url").asText("");
-        if (url.isBlank()) url = textOr(root, "image_url", "");
-        long ts = root.path("ts").asLong(System.currentTimeMillis());
-        return new ImRealtimeEvent.ImageMessage(fromId, url, ts);
-    }
-
-    private ImRealtimeEvent mapGift(JsonNode root, Header h) {
-        String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
-        String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
-        long   giftId       = root.path("gift_id").asLong(0);
-        int    count        = root.path("gift_number").asInt(1);
-        return new ImRealtimeEvent.GiftMessage(fromId, fromNickname, giftId, count);
-    }
-
-    private ImRealtimeEvent mapIntro(JsonNode root, Header h) {
-        String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
-        String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
-        return new ImRealtimeEvent.IntroductionMessage(fromId, fromNickname);
-    }
-
-    private ImRealtimeEvent mapNotify(JsonNode root, Header h) {
-        // Room share: has cname at the top level (distinct from notify_info.cname below)
-        if (root.has("cname")) {
-            String cname        = textOr(root, "cname", "");
-            String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
-            String headUrl      = root.path("head_url").isNull() ? null : textOr(root, "head_url", null);
-            if (root.has("count") || root.has("voice_count")) {
-                int count = root.has("count")
-                    ? root.path("count").asInt(0)
-                    : root.path("voice_count").asInt(0);
-                return new ImRealtimeEvent.VoiceRoomShared(fromNickname, cname, headUrl, count);
-            }
-            return new ImRealtimeEvent.LiveRoomShared(fromNickname, cname, headUrl);
-        }
-
-        // Personal room notify_type pushes, received here on the same ht_im/sock channel with
-        // notify_info nested (no "event" wrapper, unlike the per-room LiveHub frames handled by
-        // HtNotifyMapper). Unlike the LiveHub broadcast shape, these carry no user_id at all —
-        // confirmed from a live capture of a real notify_type 48 push:
-        //   {"notify_type":48,"notify_info":{"cname":"VR_...","host_id":131331894}}
-        // There's no point telling an account who was invited on its own personal channel — it's
-        // implicitly this connector's own userId — so that's the fallback when the field is absent.
-        JsonNode info = root.path("notify_info");
-        String selfId = String.valueOf(userId);
-        switch (root.path("notify_type").asText("")) {
-            case "18":
-                return new ImRealtimeEvent.StageInvite(textOr(info, "user_id", selfId), textOr(info, "cname", ""));
-            case "48":
-                return new ImRealtimeEvent.ModInvite(textOr(info, "user_id", selfId), textOr(info, "cname", ""));
-            case "34":
-                return new ImRealtimeEvent.ModAccepted(textOr(info, "user_id", selfId));
-            case "35":
-                return new ImRealtimeEvent.ModRemoved(textOr(info, "user_id", selfId));
-            case "40":
-                return new ImRealtimeEvent.ModUnmuted(textOr(info, "user_id", selfId));
-            case "53":
-                return new ImRealtimeEvent.Follow(textOr(info, "nickname", ""), info.path("status").asInt(0));
-            default:
-                break;
-        }
-
-        // Profile visit: has visitor_uid / visitor_user_id / visitor_id (older/alternate shape)
-        for (String field : new String[]{"visitor_uid", "visitor_user_id", "visitor_id"}) {
-            if (root.has(field)) {
-                return new ImRealtimeEvent.ProfileVisit(textOr(root, field, ""));
-            }
-        }
-
-        return null;
-    }
-
-    private ImRealtimeEvent mapProfileVisit(JsonNode root) {
-        // scriptv2.js startwebsock(): msg_type === "new_voice_visitor" carries a top-level userId.
-        String visitorId = textOr(root, "userId", textOr(root, "user_id", ""));
-        return visitorId.isEmpty() ? null : new ImRealtimeEvent.ProfileVisit(visitorId);
     }
 
     // ── heartbeat ────────────────────────────────────────────────────────────
