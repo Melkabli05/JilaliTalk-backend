@@ -16,8 +16,8 @@ public record JilaliProperties(
         @Nullable String agoraCipherKey,
         @Nullable String serverPubKeyHex,
         @Nullable String deviceId,
-        @Nullable List<String> allowedWebSocketOrigins,
-        @Nullable String translatePubKey) {
+        @Nullable String deviceModel,
+        @Nullable List<String> allowedWebSocketOrigins) {
 
     /** Stable fallback device ID generated once per process start. */
     private static final String FALLBACK_DEVICE_ID = UUID.randomUUID().toString().replace("-", "");
@@ -29,10 +29,11 @@ public record JilaliProperties(
         serverPubKeyHex  = serverPubKeyHex  != null ? serverPubKeyHex  : "";
         deviceId         = deviceId         != null && !deviceId.isBlank()
             ? deviceId : FALLBACK_DEVICE_ID;
+        deviceModel      = deviceModel      != null && !deviceModel.isBlank()
+            ? deviceModel : "Samsung Galaxy S21";
         allowedWebSocketOrigins = allowedWebSocketOrigins != null
             ? List.copyOf(allowedWebSocketOrigins)
             : List.of("http://localhost:4200", "http://localhost:4201");
-        translatePubKey  = translatePubKey  != null ? translatePubKey : "";
     }
 
     /** 16-byte AES key for decrypting LiveHub's Agora token payloads. */

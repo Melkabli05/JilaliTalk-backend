@@ -1,6 +1,8 @@
 package com.jilali.realtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jilali.core.JilaliProperties;
+import com.jilali.core.UidExtractor;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
@@ -10,62 +12,48 @@ import reactor.core.publisher.Sinks;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Pub-sub bridge between browser WebSocket sessions and the LiveHub upstream per room.
- *
- * <p>Each room ({@code cname}) owns its own {@link HtLiveHubUpstreamConnector} instance, so
- * connection state (cname, userId, ws, heartbeat thread) is isolated and cannot bleed between
- * rooms. The first subscriber for a room opens the upstream; the last subscriber to leave closes
- * it and removes the sink.
- */
+/** Pub-sub bridge: browser tabs subscribe per room, first subscriber opens the LiveHub upstream, last leaves closes it. */
 @Singleton
 public class RoomEventSource {
 
     private static final Logger log = LoggerFactory.getLogger(RoomEventSource.class);
 
     private final HtNotifyMapper mapper;
-    private final ObjectMapper om;
-    private final RoomSubscriberTracker tracker;
-
-    /** cname → per-room connector. One connector per live upstream connection. */
+    private final String connectorUserId;
     private final Map<String, HtLiveHubUpstreamConnector> connectors = new ConcurrentHashMap<>();
-
-    /** cname → per-room sink. */
+    private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
     private final Map<String, Sinks.Many<RoomRealtimeEvent>> sinks = new ConcurrentHashMap<>();
 
-    public RoomEventSource(HtNotifyMapper mapper, ObjectMapper om) {
+    public RoomEventSource(HtNotifyMapper mapper, JilaliProperties properties, ObjectMapper om) {
         this.mapper = mapper;
-        this.om = om;
-        this.tracker = new RoomSubscriberTracker();
+        this.connectorUserId = UidExtractor.uidAsString(properties.defaultAuthToken(), om);
+        log.info("RoomEventSource: connector userId={}", connectorUserId);
     }
 
-    /**
-     * Subscribe to events for room {@code cname}.
-     *
-     * @return a {@link Flux} that emits {@link RoomRealtimeEvent}s for this room.
-     */
-    public Flux<RoomRealtimeEvent> subscribe(String cname, long hostId, int busiType, long heartbeatSeconds) {
-        boolean first = tracker.subscribe(cname);
+    public Flux<RoomRealtimeEvent> subscribe(String cname) {
+        boolean first = counts.computeIfAbsent(cname, k -> new AtomicInteger(0))
+            .incrementAndGet() == 1;
 
         if (first) {
-            HtLiveHubUpstreamConnector upstream = new HtLiveHubUpstreamConnector(mapper, om);
+            HtLiveHubUpstreamConnector upstream = new HtLiveHubUpstreamConnector(mapper);
             connectors.put(cname, upstream);
 
+            Sinks.Many<RoomRealtimeEvent> sink = sinkFor(cname);
             upstream.attach(
-                event -> sinkFor(cname).tryEmitNext(event),
+                event -> sink.tryEmitNext(event),
                 () -> {
                     log.info("RoomEventSource: upstream disconnected for cname='{}'", cname);
-                    sinkFor(cname).tryEmitComplete();
+                    sink.tryEmitComplete();
                 }
             );
 
-            // Wire connection failure so subscribers get an error event instead of silence.
-            upstream.connect("0", cname, true)
+            upstream.connect(connectorUserId, cname, true)
                 .exceptionally(ex -> {
                     log.error("RoomEventSource: upstream connection failed for cname='{}': {}", cname, ex.getMessage());
-                    sinkFor(cname).tryEmitNext(new RoomRealtimeEvent.Error("Upstream connection failed: " + ex.getMessage()));
-                    sinkFor(cname).tryEmitComplete();
+                    sink.tryEmitNext(new RoomRealtimeEvent.Error("Upstream connection failed: " + ex.getMessage()));
+                    sink.tryEmitComplete();
                     return null;
                 });
 
@@ -75,22 +63,17 @@ public class RoomEventSource {
         return sinkFor(cname).asFlux();
     }
 
-    /**
-     * Called by {@link RoomSocketController} when a WebSocket session closes, so the per-room
-     * subscriber count is decremented and the upstream closed when the last subscriber leaves.
-     */
     public void unsubscribe(String cname) {
-        boolean last = tracker.unsubscribe(cname);
-        if (last) {
+        AtomicInteger count = counts.get(cname);
+        if (count == null) return;
+        int remaining = count.decrementAndGet();
+        if (remaining <= 0) {
+            counts.remove(cname, count);
             log.info("RoomEventSource: last subscriber left cname='{}', closing upstream", cname);
             HtLiveHubUpstreamConnector upstream = connectors.remove(cname);
-            if (upstream != null) {
-                upstream.close();
-            }
+            if (upstream != null) upstream.close();
             Sinks.Many<RoomRealtimeEvent> sink = sinks.remove(cname);
-            if (sink != null) {
-                sink.tryEmitComplete();
-            }
+            if (sink != null) sink.tryEmitComplete();
         }
     }
 

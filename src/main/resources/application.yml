@@ -10,6 +10,7 @@ micronaut:
           allowed-origins:
             - http://localhost:4200
             - http://localhost:4201
+            - http://localhost:3000
           allowed-methods:
             - GET
             - POST
@@ -48,12 +49,6 @@ micronaut:
         connect-timeout: 5s
         security:
           enabled: false
-      translate:
-        url: ${LIVEHUB_TRANSLATE_BASE_URL:`https://api-global.hellotalk8.com`}
-        read-timeout: 15s
-        connect-timeout: 5s
-        security:
-          enabled: false
   serde:
     enabled: true
     deserialization:
@@ -75,9 +70,8 @@ datasources:
     password: ""
 
 jilali:
-  # Static public-key token for the HelloTalk translate service.
-  # Set LIVEHUB_TRANSLATE_PUB_KEY environment variable in production.
-  translate-pub-key: ${LIVEHUB_TRANSLATE_PUB_KEY:5b1040dac31a5c2ff33f14508213a01273c7a40f5e346640bbca9a3e4b933a50fef1b0f5e755a70a8873acddd85389e6c17d32bfcc878ec7832f7c21299c3724}
+  # HelloTalk API auth token. Set LIVEHUB_AUTH_TOKEN env var.
+  default-auth-token: ${LIVEHUB_AUTH_TOKEN:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODU0Njc4MDksImlhdCI6MTc4Mjg3NTgwOSwic3JjIjoyLCJ1aWQiOjE2OTMzNTU2Mn0.c4Gsbkb8_2jX6ETUqrgNWsZANIcoUZxOvH6lqBhm2oU}
   # Allowed Origin headers for WebSocket connections to /ws/ht/{cname}.
   allowed-web-socket-origins:
     - "http://localhost:4200"
@@ -107,7 +101,9 @@ jilali:
   # HelloTalk server's static Curve25519 public key (hex). Set LIVEHUB_SERVER_PUB_KEY env var.
   server-pub-key-hex: ${LIVEHUB_SERVER_PUB_KEY:f684f611b895a5d3abc124a20ca2dfd397662318cfd4fd74b80aba478c17ca68}
   # Device ID sent to the HelloTalk userinfo endpoint. Set LIVEHUB_DEVICE_ID env var.
-  device-id: ${LIVEHUB_DEVICE_ID:4050e6f3ca1a3029ba21a01f4e3f13ba}
+  device-id: ${LIVEHUB_DEVICE_ID:0cb9173191e58a7bad9bbdc9fede8b9e}
+  # Device model string sent in the IM login packet. Set LIVEHUB_DEVICE_MODEL env var.
+  device-model: ${LIVEHUB_DEVICE_MODEL:Redmi Note 13 Pro+#1220X2712#446#438#973#n#6.5}
   # AES-128 key for decrypting LiveHub's Agora token payloads (16 ASCII bytes).
   agora-cipher-key: ${LIVEHUB_AGORA_CIPHER_KEY:15helloTCJTALK20}
 

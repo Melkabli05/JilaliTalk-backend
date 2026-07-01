@@ -167,8 +167,9 @@ public class HtNotifyMapper {
 
     private RoomRealtimeEvent mapTypeOne(JsonNode info) {
         RoomRealtimeEvent gifts = mapGiftBatch(info);
-        return gifts != null ? gifts
-            : new RoomRealtimeEvent.UserJoin(userId(info), textOr(info, "nickname", textOr(info, "send_nickname", "Someone")));
+        if (gifts != null) return gifts;
+        boolean isBannedComment = info.path("is_banned_comment").asBoolean(false);
+        return new RoomRealtimeEvent.UserJoin(userId(info), textOr(info, "nickname", textOr(info, "send_nickname", "Someone")), isBannedComment);
     }
 
     private RoomRealtimeEvent.StageUserEvent mapStageUser(JsonNode info) {

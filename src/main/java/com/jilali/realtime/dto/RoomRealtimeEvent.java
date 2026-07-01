@@ -63,7 +63,7 @@ public sealed interface RoomRealtimeEvent permits
 
     record ConnectionState(String state) implements RoomRealtimeEvent {}
 
-    record UserJoin(String userId, String nickname) implements RoomRealtimeEvent {}
+    record UserJoin(String userId, String nickname, boolean isBannedComment) implements RoomRealtimeEvent {}
 
     record UserQuit(String userId) implements RoomRealtimeEvent {}
 

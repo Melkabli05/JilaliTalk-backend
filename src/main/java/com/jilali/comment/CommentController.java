@@ -3,22 +3,17 @@ package com.jilali.comment;
 import com.jilali.client.JilaliClient;
 import com.jilali.client.JilaliResponses;
 import com.jilali.comment.dto.BffSendCommentRequest;
-import com.jilali.comment.dto.BffTranslateRequest;
 import com.jilali.comment.dto.CaptionHistoryResponse;
 import com.jilali.comment.dto.CaptionSwitchRequest;
 import com.jilali.comment.dto.CommentListResponse;
 import com.jilali.comment.dto.CommentNotifyResponse;
 import com.jilali.comment.dto.SendCommentRequest;
-import com.jilali.comment.dto.TranslateResponse;
-import reactor.core.publisher.Mono;
 import io.micronaut.http.HttpResponse;
-import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
-import io.micronaut.http.annotation.Produces;
 import io.micronaut.scheduling.annotation.ExecuteOn;
 import io.micronaut.scheduling.TaskExecutors;
 import jakarta.validation.Valid;
@@ -36,11 +31,9 @@ import java.time.format.DateTimeFormatter;
 public class CommentController {
 
     private final JilaliClient client;
-    private final TranslateService translateService;
 
-    public CommentController(JilaliClient client, TranslateService translateService) {
+    public CommentController(JilaliClient client) {
         this.client = client;
-        this.translateService = translateService;
     }
 
     // ---- Captions ----
@@ -99,14 +92,5 @@ public class CommentController {
     @Get("/comments/notify")
     public CommentNotifyResponse commentNotify(@QueryValue(defaultValue = "2") int busiType) {
         return JilaliResponses.unwrap(client.commentNotify(busiType));
-    }
-
-    // ---- Translate ----
-
-    @Post("/translate")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Mono<TranslateResponse> translate(@Valid @Body BffTranslateRequest req) {
-        return translateService.translate(req.text(), req.targetLang())
-                .map(TranslateResponse::new);
     }
 }
