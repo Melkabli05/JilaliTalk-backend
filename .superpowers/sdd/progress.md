@@ -12,3 +12,8 @@ BASE commit: ee3bd0e (fix(im): mod-invite/stage-invite notify pushes carry no us
 - [x] Task 7: Approved — Full-repo verification (clean build, 66 tests 0 failures, no dead code, docs committed)
 
 
+
+## Final whole-branch review
+- Round 1: NEEDS FIXES — C1 (HeartbeatPump executor leak, Critical), I1 (reconnect/close race, Important), M1/M2 (minor hardening)
+- Fix commit: 2604262 — fix(realtime,im): close HeartbeatPump executor on teardown, guard reconnect race against intentional close
+- Round 2: Approved — no Critical/Important issues remain, 66 tests 0 failures
