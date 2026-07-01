@@ -8,7 +8,7 @@ BASE commit: ee3bd0e (fix(im): mod-invite/stage-invite notify pushes carry no us
 - - [x] Task 3: ed6a2a6 — Approved HtImFrameDecoder — pure byte-level decoding
 - [x] Task 4: 2619309 — Approved HtImNotifyMapper — pure JSON-to-event mapping
 - [x] Task 5: 1d85727 — Approved Rewrite HtImUpstreamConnector (slim + reconnect)
-- [ ] Task 6: Rewrite HtLiveHubUpstreamConnector (safe frames + reconnect)
+- [x] Task 6: f0a5a45 — Approved Rewrite HtLiveHubUpstreamConnector (safe frames + reconnect)
 - [ ] Task 7: Full-repo verification
 
 
