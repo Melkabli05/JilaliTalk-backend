@@ -48,6 +48,19 @@ class HtNotifyMapperTest {
         var join = assertInstanceOf(RoomRealtimeEvent.UserJoin.class, event);
         assertEquals("131331894", join.userId());
         assertEquals("Jilali", join.nickname());
+        assertEquals(null, join.headUrl());
+        assertEquals(null, join.nationality());
+    }
+
+    @Test
+    void notifyType1WithHeadUrlAndNationalityMapsToEnrichedUserJoin() {
+        RoomRealtimeEvent event = mapper.map("""
+            {"event":{"notify_type":"1","notify_info":{"user_id":"7","nickname":"KM","head_url":"https://x","nationality":"MA","is_banned_comment":false}},"msg_id":"m1b"}
+            """).orElseThrow();
+
+        var join = assertInstanceOf(RoomRealtimeEvent.UserJoin.class, event);
+        assertEquals("https://x", join.headUrl());
+        assertEquals("MA", join.nationality());
     }
 
     @Test
@@ -119,6 +132,33 @@ class HtNotifyMapperTest {
 
         assertEquals("7", assertInstanceOf(RoomRealtimeEvent.StageJoin.class, four).stageUser().userId());
         assertEquals("8", assertInstanceOf(RoomRealtimeEvent.StageJoin.class, twentyThree).stageUser().userId());
+    }
+
+    @Test
+    void notifyType4WithLuckyBagIdMapsToLuckyBagInsteadOfStageJoin() {
+        RoomRealtimeEvent event = mapper.map(
+            "{\"event\":{\"notify_type\":\"4\",\"notify_info\":{\"lucky_bag_id\":\"lb_1\",\"lucky_bag_number\":3,\"cname\":\"VR_1\"}},\"msg_id\":\"m6b\"}").orElseThrow();
+        var bag = assertInstanceOf(RoomRealtimeEvent.LuckyBag.class, event);
+        assertEquals("lb_1", bag.luckyBagId());
+        assertEquals(3, bag.luckyBagNumber());
+        assertEquals("VR_1", bag.cname());
+    }
+
+    @Test
+    void notifyType6WithLuckyBagIdMapsToLuckyBag() {
+        RoomRealtimeEvent event = mapper.map(
+            "{\"event\":{\"notify_type\":\"6\",\"notify_info\":{\"lucky_bag_id\":\"lb_2\",\"lucky_bag_number\":5,\"cname\":\"VR_2\"}},\"msg_id\":\"m6c\"}").orElseThrow();
+        var bag = assertInstanceOf(RoomRealtimeEvent.LuckyBag.class, event);
+        assertEquals("lb_2", bag.luckyBagId());
+        assertEquals(5, bag.luckyBagNumber());
+    }
+
+    @Test
+    void notifyType3WithLuckyBagIdMapsToLuckyBagInsteadOfRaw() {
+        RoomRealtimeEvent event = mapper.map(
+            "{\"event\":{\"notify_type\":\"3\",\"notify_info\":{\"lucky_bag_id\":\"lb_3\",\"lucky_bag_number\":1,\"cname\":\"VR_3\"}},\"msg_id\":\"m6d\"}").orElseThrow();
+        var bag = assertInstanceOf(RoomRealtimeEvent.LuckyBag.class, event);
+        assertEquals("lb_3", bag.luckyBagId());
     }
 
     @Test
@@ -195,6 +235,17 @@ class HtNotifyMapperTest {
         var control = assertInstanceOf(RoomRealtimeEvent.StageDeviceControl.class, event);
         assertEquals(1, control.deviceType());
         assertEquals(1, control.switchType());
+    }
+
+    @Test
+    void notifyType53MapsToFollowWithUserIdAndHeadUrl() {
+        RoomRealtimeEvent event = mapper.map(
+            "{\"event\":{\"notify_type\":\"53\",\"notify_info\":{\"user_id\":\"9\",\"nickname\":\"Jilali\",\"head_url\":\"https://x/a.jpg\",\"status\":2}},\"msg_id\":\"m16\"}").orElseThrow();
+        var follow = assertInstanceOf(RoomRealtimeEvent.Follow.class, event);
+        assertEquals("9", follow.userId());
+        assertEquals("Jilali", follow.nickname());
+        assertEquals("https://x/a.jpg", follow.headUrl());
+        assertEquals(2, follow.status());
     }
 
     @Test

@@ -33,6 +33,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = RoomRealtimeEvent.ModAccepted.class,         name = "mod_accepted"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.ModRemoved.class,          name = "mod_removed"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.Follow.class,             name = "follow"),
+    @JsonSubTypes.Type(value = RoomRealtimeEvent.LuckyBag.class,           name = "lucky_bag"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.Raw.class,                name = "raw"),
     @JsonSubTypes.Type(value = RoomRealtimeEvent.Error.class,              name = "error"),
 })
@@ -58,12 +59,13 @@ public sealed interface RoomRealtimeEvent permits
     RoomRealtimeEvent.ModAccepted,
     RoomRealtimeEvent.ModRemoved,
     RoomRealtimeEvent.Follow,
+    RoomRealtimeEvent.LuckyBag,
     RoomRealtimeEvent.Raw,
     RoomRealtimeEvent.Error {
 
     record ConnectionState(String state) implements RoomRealtimeEvent {}
 
-    record UserJoin(String userId, String nickname, boolean isBannedComment) implements RoomRealtimeEvent {}
+    record UserJoin(String userId, String nickname, String headUrl, String nationality, boolean isBannedComment) implements RoomRealtimeEvent {}
 
     record UserQuit(String userId) implements RoomRealtimeEvent {}
 
@@ -177,7 +179,15 @@ public sealed interface RoomRealtimeEvent permits
     record ModRemoved(String userId) implements RoomRealtimeEvent {}
 
     // Follow
-    record Follow(String nickname, int status) implements RoomRealtimeEvent {} // 1 = followed you, 2 = followed back
+    record Follow(String userId, String nickname, String headUrl, int status) implements RoomRealtimeEvent {} // 1 = followed you, 2 = followed back
+
+    /**
+     * A lucky bag giveaway started in the room. Field names mirror {@code VoiceRoomInfoObjects.LuckBag}
+     * (the REST {@code voice_room_info.luck_bag} shape) — same lucky-bag subsystem, confirmed real
+     * field names from captured traffic, reused here since the push carries the same {@code lucky_bag_id}
+     * marker this mapper already keys off of.
+     */
+    record LuckyBag(String luckyBagId, int luckyBagNumber, String cname) implements RoomRealtimeEvent {}
 
     record Raw(String originalType, Object payload) implements RoomRealtimeEvent {}
 

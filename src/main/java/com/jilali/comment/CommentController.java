@@ -6,7 +6,6 @@ import com.jilali.comment.dto.BffSendCommentRequest;
 import com.jilali.comment.dto.CaptionHistoryResponse;
 import com.jilali.comment.dto.CaptionSwitchRequest;
 import com.jilali.comment.dto.CommentListResponse;
-import com.jilali.comment.dto.CommentNotifyResponse;
 import com.jilali.comment.dto.SendCommentRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
@@ -87,10 +86,5 @@ public class CommentController {
 
         JilaliResponses.unwrap(client.sendComment(upstream));
         return HttpResponse.noContent();
-    }
-
-    @Get("/comments/notify")
-    public CommentNotifyResponse commentNotify(@QueryValue(defaultValue = "2") int busiType) {
-        return JilaliResponses.unwrap(client.commentNotify(busiType));
     }
 }

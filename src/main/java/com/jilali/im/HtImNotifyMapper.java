@@ -52,15 +52,17 @@ final class HtImNotifyMapper {
     private ImRealtimeEvent mapGift(JsonNode root, Header h) {
         String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
         String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
+        String fromHeadUrl  = textOr(root, "from_head_url", textOr(root, "head_url", ""));
         long   giftId       = root.path("gift_id").asLong(0);
         int    count        = root.path("gift_number").asInt(1);
-        return new ImRealtimeEvent.GiftMessage(fromId, fromNickname, giftId, count);
+        return new ImRealtimeEvent.GiftMessage(fromId, fromNickname, fromHeadUrl, giftId, count);
     }
 
     private ImRealtimeEvent mapIntro(JsonNode root, Header h) {
         String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
         String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
-        return new ImRealtimeEvent.IntroductionMessage(fromId, fromNickname);
+        String fromHeadUrl  = textOr(root, "from_head_url", textOr(root, "head_url", ""));
+        return new ImRealtimeEvent.IntroductionMessage(fromId, fromNickname, fromHeadUrl);
     }
 
     private ImRealtimeEvent mapNotify(JsonNode root) {
@@ -89,7 +91,11 @@ final class HtImNotifyMapper {
             case "40":
                 return new ImRealtimeEvent.ModUnmuted(textOr(info, "user_id", selfId));
             case "53":
-                return new ImRealtimeEvent.Follow(textOr(info, "nickname", ""), info.path("status").asInt(0));
+                return new ImRealtimeEvent.Follow(
+                    textOr(info, "user_id", ""),
+                    textOr(info, "nickname", ""),
+                    textOr(info, "head_url", ""),
+                    info.path("status").asInt(0));
             default:
                 break;
         }

@@ -52,9 +52,9 @@ public sealed interface ImRealtimeEvent permits
 
     record ImageMessage(String fromUserId, String imageUrl, long ts) implements ImRealtimeEvent {}
 
-    record GiftMessage(String fromUserId, String fromNickname, long giftId, int count) implements ImRealtimeEvent {}
+    record GiftMessage(String fromUserId, String fromNickname, String fromHeadUrl, long giftId, int count) implements ImRealtimeEvent {}
 
-    record IntroductionMessage(String fromUserId, String fromNickname) implements ImRealtimeEvent {}
+    record IntroductionMessage(String fromUserId, String fromNickname, String fromHeadUrl) implements ImRealtimeEvent {}
 
     record VoiceRoomShared(String fromNickname, String cname, String headUrl, Integer count) implements ImRealtimeEvent {}
 
@@ -76,7 +76,7 @@ public sealed interface ImRealtimeEvent permits
 
     record ModUnmuted(String userId) implements ImRealtimeEvent {}
 
-    record Follow(String nickname, int status) implements ImRealtimeEvent {} // 1 = followed you, 2 = followed back
+    record Follow(String userId, String nickname, String headUrl, int status) implements ImRealtimeEvent {} // 1 = followed you, 2 = followed back
 
     record GroupMessage(String senderId, String senderName, String roomName, String text) implements ImRealtimeEvent {}
 

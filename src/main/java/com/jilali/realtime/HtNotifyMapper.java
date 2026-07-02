@@ -108,7 +108,9 @@ public class HtNotifyMapper {
             case "35" -> new RoomRealtimeEvent.ModRemoved(userId(ctx.info()));
             case "40" -> new RoomRealtimeEvent.ModUnmuted(userId(ctx.info()));
             case "48" -> new RoomRealtimeEvent.ModInvite(userId(ctx.info()));
-            case "53" -> new RoomRealtimeEvent.Follow(textOr(ctx.info(), "nickname", ""), ctx.info().path("status").asInt(0));
+            case "53" -> new RoomRealtimeEvent.Follow(
+                userId(ctx.info()), textOr(ctx.info(), "nickname", ""), textOr(ctx.info(), "head_url", null),
+                ctx.info().path("status").asInt(0));
             case "3" -> mapTypeThree(ctx);
             default -> {
                 log.info("LiveHub: unrecognized notify_type '{}' falling through to raw", ctx.type());
@@ -136,11 +138,18 @@ public class HtNotifyMapper {
     }
 
     private RoomRealtimeEvent luckyBagOrNull(FrameContext ctx) {
-        return ctx.info().has("lucky_bag_id") ? raw(ctx.type(), ctx.root()) : null;
+        return ctx.info().has("lucky_bag_id") ? mapLuckyBag(ctx.info()) : null;
+    }
+
+    private RoomRealtimeEvent mapLuckyBag(JsonNode info) {
+        return new RoomRealtimeEvent.LuckyBag(
+            textOr(info, "lucky_bag_id", ""),
+            info.path("lucky_bag_number").asInt(0),
+            cname(info));
     }
 
     private RoomRealtimeEvent mapTypeThree(FrameContext ctx) {
-        if (ctx.info().has("lucky_bag_id")) return raw(ctx.type(), ctx.root());
+        if (ctx.info().has("lucky_bag_id")) return mapLuckyBag(ctx.info());
         int gameType = ctx.info().path("game_type").asInt(-1);
         int kickType = ctx.info().path("kick_type").asInt(-1);
         return switch (gameType) {
@@ -169,7 +178,12 @@ public class HtNotifyMapper {
         RoomRealtimeEvent gifts = mapGiftBatch(info);
         if (gifts != null) return gifts;
         boolean isBannedComment = info.path("is_banned_comment").asBoolean(false);
-        return new RoomRealtimeEvent.UserJoin(userId(info), textOr(info, "nickname", textOr(info, "send_nickname", "Someone")), isBannedComment);
+        return new RoomRealtimeEvent.UserJoin(
+            userId(info),
+            textOr(info, "nickname", textOr(info, "send_nickname", "Someone")),
+            textOr(info, "head_url", null),
+            textOr(info, "nationality", null),
+            isBannedComment);
     }
 
     private RoomRealtimeEvent.StageUserEvent mapStageUser(JsonNode info) {

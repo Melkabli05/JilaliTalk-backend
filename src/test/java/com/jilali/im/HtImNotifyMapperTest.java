@@ -63,6 +63,18 @@ class HtImNotifyMapperTest {
             map("{\"notify_type\":\"53\",\"notify_info\":{\"nickname\":\"Jilali\",\"status\":2}}"));
         assertEquals("Jilali", e.nickname());
         assertEquals(2, e.status());
+        assertEquals("", e.userId());
+        assertEquals("", e.headUrl());
+    }
+
+    @Test
+    void notifyType53MapsToFollowWithUserIdAndHeadUrl() throws Exception {
+        var e = assertInstanceOf(ImRealtimeEvent.Follow.class,
+            map("{\"notify_type\":\"53\",\"notify_info\":{\"user_id\":\"9\",\"nickname\":\"Jilali\",\"head_url\":\"https://x/a.jpg\",\"status\":1}}"));
+        assertEquals("9", e.userId());
+        assertEquals("Jilali", e.nickname());
+        assertEquals("https://x/a.jpg", e.headUrl());
+        assertEquals(1, e.status());
     }
 
     @Test

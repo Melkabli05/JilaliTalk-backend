@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.jilali.comment.dto.CaptionHistoryResponse;
 import com.jilali.comment.dto.CaptionSwitchRequest;
 import com.jilali.comment.dto.CommentListResponse;
-import com.jilali.comment.dto.CommentNotifyResponse;
 import com.jilali.comment.dto.SendCommentRequest;
 import com.jilali.core.JilaliEnvelope;
 import com.jilali.manager.dto.ApproveManagerRequest;
@@ -229,9 +228,6 @@ public interface JilaliClient {
 
     @Post("/comment")
     JilaliEnvelope<Object> sendComment(@Body SendCommentRequest body);
-
-    @Get("/comment_notify")
-    JilaliEnvelope<CommentNotifyResponse> commentNotify(@QueryValue("busi_type") int busiType);
 
     @Get("/caption/history")
     JilaliEnvelope<CaptionHistoryResponse> captionHistory(@QueryValue("busi_type") int busiType,
