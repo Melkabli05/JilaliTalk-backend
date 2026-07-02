@@ -22,6 +22,7 @@ dependencies {
     implementation 'io.micronaut:micronaut-jackson-databind'
     implementation 'io.micronaut.validation:micronaut-validation'
     implementation 'io.micronaut.openapi:micronaut-openapi'
+    implementation 'io.micronaut.cache:micronaut-cache-caffeine'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.79'
     implementation 'io.projectreactor:reactor-core'
     implementation 'io.micronaut.sql:micronaut-jdbc-hikari'

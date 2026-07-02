@@ -57,6 +57,17 @@ micronaut:
   openapi:
     views:
       spec: swagger-ui.enabled=true
+  caches:
+    # Caches JilaliGateway.userInfo() — profile lookups are encrypted round-trips
+    # (Curve25519 exchange + AES) and the same userId is requested repeatedly
+    # (every room roster, comment author, notification avatar). Long-lived by design:
+    # profile fields (nickname/avatar/VIP status) change rarely, so entries stay cached
+    # as long as they keep being accessed (expire-after-access, not a fixed write TTL) —
+    # a popular host's profile never re-pays the handshake while people keep joining
+    # their room, while cold/inactive entries still age out to bound memory.
+    user-info:
+      expire-after-access: 24h
+      maximum-size: 20000
 
 endpoints:
   all:

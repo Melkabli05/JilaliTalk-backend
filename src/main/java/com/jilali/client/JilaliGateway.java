@@ -20,6 +20,7 @@ import com.jilali.user.dto.UserInfoResponse;
 import com.jilali.vip.dto.UseVipExperienceCardRequest;
 import com.jilali.vip.dto.VipExperienceCard;
 import com.jilali.vip.dto.VipExperienceCardRecordsRequest;
+import io.micronaut.cache.annotation.Cacheable;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.client.BlockingHttpClient;
@@ -191,10 +192,17 @@ public class JilaliGateway {
     /**
      * Fetches HelloTalk user info via the encrypted ht/encbin endpoint.
      * Uses a direct HTTP call to set per-request ht/encbin headers correctly.
+     * <p>
+     * Cached by {@code userId} alone (see {@code user-info} cache in application.yml) — the
+     * returned profile doesn't depend on which caller asked, only on whose profile it is. Every
+     * room roster, comment author, and notification avatar look this same handful of user IDs
+     * up repeatedly, and each miss costs a full Curve25519 handshake + AES round-trip, so a short
+     * TTL removes most of that cost without serving badly stale profiles.
      *
      * @param userId the HelloTalk user ID to look up
      * @return clean UserInfo record
      */
+    @Cacheable("user-info")
     public UserInfo userInfo(long userId) {
         var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
         var request = UserInfoRequest.forUser(userId);
