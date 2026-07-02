@@ -3,14 +3,11 @@ package com.jilali.crypto;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.security.GeneralSecurityException;
-import java.security.Security;
 import java.util.HexFormat;
 import java.util.zip.GZIPInputStream;
 
@@ -28,10 +25,6 @@ public final class EncbinUtil {
         .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
         .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-    static {
-        Security.addProvider(new BouncyCastleProvider());
-    }
-
     private EncbinUtil() {}
 
     /**
@@ -45,7 +38,7 @@ public final class EncbinUtil {
         try {
             byte[] plaintext = MAPPER.writeValueAsBytes(payload);
             byte[] key = HexFormat.of().parseHex(sharedSecretHex);
-            Cipher cipher = Cipher.getInstance(ALGORITHM, "BC");
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
             cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"));
             return cipher.doFinal(plaintext);
         } catch (GeneralSecurityException e) {
@@ -79,7 +72,7 @@ public final class EncbinUtil {
     public static byte[] decryptToJson(byte[] encrypted, String sharedSecretHex)
             throws GeneralSecurityException, java.io.IOException {
         byte[] key = HexFormat.of().parseHex(sharedSecretHex);
-        Cipher cipher = Cipher.getInstance(ALGORITHM, "BC");
+        Cipher cipher = Cipher.getInstance(ALGORITHM);
         cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"));
         byte[] decrypted = cipher.doFinal(encrypted);
         return maybeGunzip(decrypted);
