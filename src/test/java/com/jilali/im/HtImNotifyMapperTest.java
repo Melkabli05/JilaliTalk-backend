@@ -74,16 +74,29 @@ class HtImNotifyMapperTest {
 
     @Test
     void newVoiceVisitorMapsToProfileVisit() throws Exception {
-        assertEquals("148459398",
-            assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
-                map("{\"msg_type\":\"new_voice_visitor\",\"userId\":\"148459398\"}")).visitorUserId());
+        var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
+            map("{\"msg_type\":\"new_voice_visitor\",\"userId\":\"148459398\"}"));
+        assertEquals("148459398", e.visitorUserId());
+        assertEquals("", e.nickname());
+        assertEquals("", e.headUrl());
+    }
+
+    @Test
+    void newVoiceVisitorMapsToProfileVisitWithNicknameAndHeadUrl() throws Exception {
+        var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
+            map("{\"msg_type\":\"new_voice_visitor\",\"userId\":\"148459398\",\"nickname\":\"Jilali\",\"head_url\":\"https://x/a.jpg\"}"));
+        assertEquals("148459398", e.visitorUserId());
+        assertEquals("Jilali", e.nickname());
+        assertEquals("https://x/a.jpg", e.headUrl());
     }
 
     @Test
     void legacyVisitorUidFieldMapsToProfileVisit() throws Exception {
-        assertEquals("55",
-            assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
-                map("{\"notify_type\":\"90\",\"visitor_uid\":\"55\"}")).visitorUserId());
+        var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
+            map("{\"notify_type\":\"90\",\"visitor_uid\":\"55\"}"));
+        assertEquals("55", e.visitorUserId());
+        assertEquals("", e.nickname());
+        assertEquals("", e.headUrl());
     }
 
     @Test

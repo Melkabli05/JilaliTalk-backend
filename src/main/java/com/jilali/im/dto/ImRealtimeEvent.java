@@ -60,7 +60,7 @@ public sealed interface ImRealtimeEvent permits
 
     record LiveRoomShared(String fromNickname, String cname, String headUrl) implements ImRealtimeEvent {}
 
-    record ProfileVisit(String visitorUserId) implements ImRealtimeEvent {}
+    record ProfileVisit(String visitorUserId, String nickname, String headUrl) implements ImRealtimeEvent {}
 
     // Personal notify_type pushes (notify_type 18/48/34/35/40/53) — same wire types the
     // reference client (scriptv2.js startwebsock()) received on this same ht_im/sock channel,

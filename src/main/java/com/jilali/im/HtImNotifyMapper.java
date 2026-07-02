@@ -96,7 +96,12 @@ final class HtImNotifyMapper {
 
         for (String field : new String[]{"visitor_uid", "visitor_user_id", "visitor_id"}) {
             if (root.has(field)) {
-                return new ImRealtimeEvent.ProfileVisit(textOr(root, field, ""));
+                String visitorId = textOr(root, field, "");
+                if (!visitorId.isEmpty()) {
+                    String nickname = textOr(root, "nickname", textOr(root, "from_nickname", ""));
+                    String headUrl = textOr(root, "head_url", textOr(root, "headUrl", ""));
+                    return new ImRealtimeEvent.ProfileVisit(visitorId, nickname, headUrl);
+                }
             }
         }
         return null;
@@ -104,7 +109,10 @@ final class HtImNotifyMapper {
 
     private ImRealtimeEvent mapProfileVisit(JsonNode root) {
         String visitorId = textOr(root, "userId", textOr(root, "user_id", ""));
-        return visitorId.isEmpty() ? null : new ImRealtimeEvent.ProfileVisit(visitorId);
+        if (visitorId.isEmpty()) return null;
+        String nickname = textOr(root, "nickname", textOr(root, "from_nickname", ""));
+        String headUrl = textOr(root, "head_url", textOr(root, "headUrl", ""));
+        return new ImRealtimeEvent.ProfileVisit(visitorId, nickname, headUrl);
     }
 
     private static String textOr(JsonNode node, String field, String fallback) {
