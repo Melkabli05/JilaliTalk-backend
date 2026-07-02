@@ -1,0 +1,42 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": ".*bouncycastle.*\\.class$"
+      },
+      {
+        "pattern": ".*bcprov.*\\.class$"
+      }
+    ]
+  },
+  "bundles": [],
+  "reflection": {
+    "includes": [
+      {
+        "name": "org.bouncycastle.jce.provider.BouncyCastleProvider",
+        "allDeclaredConstructors": true,
+        "allDeclaredMethods": true
+      },
+      {
+        "name": "org.bouncycastle.crypto.engines.AESEngine",
+        "allDeclaredConstructors": true,
+        "allDeclaredMethods": true
+      },
+      {
+        "name": "org.bouncycastle.crypto.generators.X25519KeyPairGenerator",
+        "allDeclaredConstructors": true,
+        "allDeclaredMethods": true
+      },
+      {
+        "name": "org.bouncycastle.crypto.params.X25519PrivateKeyParameters",
+        "allDeclaredConstructors": true,
+        "allDeclaredMethods": true
+      },
+      {
+        "name": "org.bouncycastle.crypto.params.X25519PublicKeyParameters",
+        "allDeclaredConstructors": true,
+        "allDeclaredMethods": true
+      }
+    ]
+  }
+}
