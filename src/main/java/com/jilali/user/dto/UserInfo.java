@@ -29,6 +29,25 @@ public record UserInfo(
     @Nullable String liveStateCname,
     @Nullable UserInfoResponse.UserInfoItem details
 ) {
+
+    /**
+     * Pre-computed total of the six user-contribution point categories (correct, translate, word,
+     * speechToText, textTranslate, transliterate). Matches the sum computed client-side in
+     * {@code user-info-modal.component.ts pointsSummary}. Pass-through endpoints that call this
+     * field directly eliminate duplicate arithmetic logic between the two codebases.
+     */
+    public int pointsTotal() {
+        if (details == null || details.points() == null) {
+            return 0;
+        }
+        var p = details.points();
+        return nvl(p.correct()) + nvl(p.translate()) + nvl(p.word())
+             + nvl(p.speechToText()) + nvl(p.textTranslate()) + nvl(p.transliterate());
+    }
+
+    private static int nvl(@Nullable Integer v) {
+        return v == null ? 0 : v;
+    }
     /** Maps HelloTalk's numeric sex to labels. */
     public static String mapSex(int sex) {
         return switch (sex) {

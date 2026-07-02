@@ -184,7 +184,7 @@ public class JilaliGateway {
             String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
             var matcher = UID_CLAIM_PATTERN.matcher(payload);
             return matcher.find() ? Long.parseLong(matcher.group(1)) : null;
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             return null;
         }
     }

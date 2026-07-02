@@ -12,9 +12,13 @@ import com.jilali.room.dto.ChannelListResponse;
 import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
 import com.jilali.room.dto.EndChannelRequest;
+import com.jilali.room.dto.JoinBundleResponse;
+import com.jilali.room.dto.AudienceRevisionResponse;
+import com.jilali.realtime.RoomEventSource;
 import com.jilali.room.dto.LanguageGroup;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.room.dto.VoiceRoomInfoResponse;
+import io.micronaut.cache.annotation.Cacheable;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -44,10 +48,15 @@ public class RoomController {
 
     private final JilaliClient client;
     private final JilaliProperties properties;
+    private final RoomJoinService roomJoinService;
+    private final RoomEventSource roomEventSource;
 
-    public RoomController(JilaliClient client, JilaliProperties properties) {
+    public RoomController(JilaliClient client, JilaliProperties properties,
+                          RoomJoinService roomJoinService, RoomEventSource roomEventSource) {
         this.client = client;
         this.properties = properties;
+        this.roomJoinService = roomJoinService;
+        this.roomEventSource = roomEventSource;
     }
 
     // ---- Discovery ----
@@ -89,17 +98,20 @@ public class RoomController {
         return JilaliResponses.unwrap(client.recommendSingleVoiceRoom(langId));
     }
 
+    @Cacheable("reference-data")
     @Get("/language-groups/voice")
     public List<LanguageGroup> languageGroupsVoice(
             @QueryValue(defaultValue = "create") String scene) {
         return JilaliResponses.unwrap(client.languageGroupVoice(scene));
     }
 
+    @Cacheable("reference-data")
     @Get("/language-groups/live")
     public List<LanguageGroup> languageGroupsLive() {
         return JilaliResponses.unwrap(client.languageGroupLive());
     }
 
+    @Cacheable("reference-data")
     @Get("/categories")
     public CategoryTopicListResponse categories(
             @QueryValue(defaultValue = "2") int busiType) {
@@ -116,6 +128,27 @@ public class RoomController {
     @Get("/live/{cname}")
     public VoiceRoomInfoResponse liveRoomInfo(String cname) {
         return decryptRtcToken(JilaliResponses.unwrap(client.liveRoomInfo(cname)));
+    }
+
+    /**
+     * Bundled join payload — fans three LiveHub calls (voice room info, stage list, audience
+     * roster) out in parallel server-side so the browser makes one round-trip instead of three.
+     */
+    @Get("/{cname}/join-bundle")
+    public JoinBundleResponse joinBundle(
+            String cname,
+            @QueryValue(defaultValue = "2") int busiType) {
+        return roomJoinService.joinBundle(cname, busiType);
+    }
+
+    /**
+     * Returns the audience roster revision for a room. Clients poll this to decide whether to
+     * refetch — they only call {@code /api/rooms/{cname}/audience} when revision > their last-known
+     * value, eliminating the fixed 30-second polling that blindly refetches regardless of activity.
+     */
+    @Get("/{cname}/audience-revision")
+    public AudienceRevisionResponse audienceRevision(String cname) {
+        return new AudienceRevisionResponse(roomEventSource.audienceRevision(cname));
     }
 
     /**
@@ -149,6 +182,7 @@ public class RoomController {
         return JilaliResponses.unwrap(client.batchQueryChannel(request));
     }
 
+    @Cacheable("reference-data")
     @Get("/config")
     public Map<String, Object> liveVoiceConfig() {
         return JilaliResponses.unwrap(client.liveVoiceConfig());

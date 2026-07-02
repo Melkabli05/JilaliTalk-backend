@@ -51,7 +51,7 @@ final class HtImFrameDecoder {
 
         try {
             return Optional.of(om.readTree(text));
-        } catch (Exception e) {
+        } catch (Exception _) {
             return Optional.empty();
         }
     }
@@ -63,7 +63,7 @@ final class HtImFrameDecoder {
         byte[] decrypted;
         try {
             decrypted = QqTeaCipher.decrypt(encPayload, sessionKey);
-        } catch (Exception e) {
+        } catch (Exception _) {
             return new F2Push.DecryptFailed();
         }
         if (decrypted == null || decrypted.length == 0) return new F2Push.Ignored();
@@ -95,7 +95,7 @@ final class HtImFrameDecoder {
         if (!jsonStr.startsWith("{")) return new F2Push.Ignored();
         try {
             return new F2Push.Json(om.readTree(jsonStr));
-        } catch (Exception e) {
+        } catch (Exception _) {
             return new F2Push.Ignored();
         }
     }
@@ -142,7 +142,7 @@ final class HtImFrameDecoder {
 
             Header header = new Header(PKT_PUSH, keyType, cmdId, 0, fromId, toId, bodyLen);
             return Optional.of(new OfflinePacket(header, decodePushBody(payload)));
-        } catch (Exception e) {
+        } catch (Exception _) {
             return Optional.empty();
         }
     }

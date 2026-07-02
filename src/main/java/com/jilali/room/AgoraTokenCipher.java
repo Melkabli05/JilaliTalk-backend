@@ -42,7 +42,7 @@ public final class AgoraTokenCipher {
                 end--;
             }
             return new String(plain, 0, end, StandardCharsets.UTF_8);
-        } catch (Exception e) {
+        } catch (Exception _) {
             // Not valid hex / not our scheme — leave the value as-is rather than dropping it.
             return token;
         }

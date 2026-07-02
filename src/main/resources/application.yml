@@ -68,6 +68,12 @@ micronaut:
     user-info:
       expire-after-access: 24h
       maximum-size: 20000
+    # Caches near-static room reference data: categories, language-group lists, and app
+    # config. These change on the order of days/weeks (admin-updated category/topic lists,
+    # supported-language additions). A 6-hour write TTL is effectively permanent for users.
+    reference-data:
+      expire-after-write: 6h
+      maximum-size: 50
 
 endpoints:
   all:

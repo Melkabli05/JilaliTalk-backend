@@ -50,6 +50,10 @@ java {
     targetCompatibility = JavaVersion.toVersion('25')
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['--enable-preview']
+}
+
 micronaut {
     runtime 'netty'
     testRuntime 'junit5'
