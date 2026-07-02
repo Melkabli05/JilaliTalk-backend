@@ -4,14 +4,10 @@ WORKDIR /workspace
 COPY . .
 RUN ./gradlew shadowJar --no-daemon
 
-# Stage 2: Runtime on JVM (BC cipher works correctly; no GraalVM native image)
-# Alpine is ~5MB vs ~124MB for Ubuntu — smaller attack surface.
-# Use eclipse-temurin:25-jre-alpine for minimal image with JVM 25.
+# Stage 2: Runtime on JVM (BC cipher works correctly, GraalVM native image issues bypassed)
 FROM eclipse-temurin:25-jre-alpine
 WORKDIR /home/app
 EXPOSE 8080
-COPY --from=builder /workspace/build/libs/jilalibff-0.1-all.jar app.jar
-
-# JVM auto-detects container memory limits (Java 10+).
-# Alpine needs certificates for HTTPS calls — Java cacerts bundled in Temurin image.
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Copy the JAR - wildcard since shadow plugin may vary the exact output path
+COPY --from=builder /workspace/build/libs/*.jar /home/app/jilalibff.jar
+ENTRYPOINT ["java", "-jar", "/home/app/jilalibff.jar"]
