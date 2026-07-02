@@ -36,9 +36,11 @@ public final class EncbinUtil {
             System.arraycopy(output, 0, result, 0, len);
             return result;
         } catch (java.io.IOException e) {
-            throw new RuntimeException("ht/encbin serialization failed", e);
+            throw new RuntimeException("ht/encbin serialization failed: " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("ht/encbin encryption failed", e);
+            throw new RuntimeException("ht/encbin encryption failed: " + e.getClass().getName() + " " + e.getMessage(), e);
         }
     }
 
@@ -69,13 +71,17 @@ public final class EncbinUtil {
     }
 
     private static int crypt(byte[] input, byte[] key, byte[] output, boolean forEncryption) throws Exception {
-        BlockCipher engine = new AESEngine();
-        BlockCipherPadding padding = new PKCS7Padding();
-        PaddedBufferedBlockCipher cipher = new PaddedBufferedBlockCipher(engine, padding);
-        cipher.init(forEncryption, new org.bouncycastle.crypto.params.KeyParameter(key));
-        int len = cipher.processBytes(input, 0, input.length, output, 0);
-        len += cipher.doFinal(output, len);
-        return len;
+        try {
+            BlockCipher engine = new AESEngine();
+            BlockCipherPadding padding = new PKCS7Padding();
+            PaddedBufferedBlockCipher cipher = new PaddedBufferedBlockCipher(engine, padding);
+            cipher.init(forEncryption, new org.bouncycastle.crypto.params.KeyParameter(key));
+            int len = cipher.processBytes(input, 0, input.length, output, 0);
+            len += cipher.doFinal(output, len);
+            return len;
+        } catch (Exception e) {
+            throw new RuntimeException("AES crypt failed: keyLen=" + key.length + " inputLen=" + input.length, e);
+        }
     }
 
     private static byte[] hexStringToBytes(String hex) {
