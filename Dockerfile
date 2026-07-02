@@ -10,4 +10,4 @@ WORKDIR /home/app
 EXPOSE 8080
 # Copy the JAR - wildcard since shadow plugin may vary the exact output path
 COPY --from=builder /workspace/build/libs/*.jar /home/app/jilalibff.jar
-ENTRYPOINT ["java", "-jar", "/home/app/jilalibff.jar"]
+ENTRYPOINT ["java", "--enable-preview", "-jar", "/home/app/jilalibff.jar"]

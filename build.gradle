@@ -54,6 +54,16 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += ['--enable-preview']
 }
 
+// StructuredTaskScope (RoomJoinService) is still preview API in Java 25 GA — classes compiled
+// with --enable-preview fail to *load* at runtime without it too, not just at compile time.
+tasks.withType(Test).configureEach {
+    jvmArgs('--enable-preview')
+}
+
+tasks.named('run') {
+    jvmArgs('--enable-preview')
+}
+
 micronaut {
     runtime 'netty'
     testRuntime 'junit5'

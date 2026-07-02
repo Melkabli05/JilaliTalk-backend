@@ -40,17 +40,20 @@ public class RoomJoinService {
     }
 
     /**
-     * Calls LiveHub's voice room info, stage list, and audience user list concurrently.
+     * Calls LiveHub's room info (voice or live, dispatched by {@code busiType}), stage list, and
+     * audience user list concurrently.
      *
      * @param cname    room channel name
-     * @param busiType business type (2 = voice, 3 = live)
+     * @param busiType business type (1 = live/video, 2 = voice — see voice-list/live-list route
+     *                 dispatch on the frontend) — selects liveRoomInfo vs voiceRoomInfo
      * @return combined payload for a room join
      * @throws RuntimeException wrapping the upstream failure if any of the three calls errors
      */
     public JoinBundleResponse joinBundle(String cname, int busiType) {
         try (var scope = StructuredTaskScope.open()) {
 
-            var voiceInfoTask    = scope.fork(() -> JilaliResponses.unwrap(client.voiceRoomInfo(cname)));
+            var voiceInfoTask    = scope.fork(() -> JilaliResponses.unwrap(
+                    busiType == 1 ? client.liveRoomInfo(cname) : client.voiceRoomInfo(cname)));
             var stageUsersTask   = scope.fork(() -> JilaliResponses.unwrap(client.stageList(busiType, cname)));
             var audienceUsersTask = scope.fork(() -> JilaliResponses.unwrap(
                     client.roomUserList(new RoomUserListRequest(null, cname, busiType))));
