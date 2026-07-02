@@ -3,79 +3,83 @@ package com.jilali.crypto;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import javax.crypto.Cipher;
-import javax.crypto.spec.SecretKeySpec;
+import org.bouncycastle.crypto.BlockCipher;
+import org.bouncycastle.crypto.engines.AESEngine;
+import org.bouncycastle.crypto.paddings.BlockCipherPadding;
+import org.bouncycastle.crypto.paddings.PKCS7Padding;
+import org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher;
+import org.bouncycastle.util.encoders.Hex;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.security.GeneralSecurityException;
-import java.util.HexFormat;
 import java.util.zip.GZIPInputStream;
 
 /**
  * Encrypts and decrypts HelloTalk's ht/encbin payloads.
- * AES-256-ECB with PKCS5 padding; content may be gzip-compressed.
+ * Uses BC's low-level AESEngine + PKCS7 padding directly — no JCA Provider routing,
+ * which avoids GraalVM Native Image issues with SunJCE's AES implementation.
  */
 public final class EncbinUtil {
 
-    /** AES-256-ECB with PKCS5 padding — server uses standard padding, not NoPadding. */
-    private static final String ALGORITHM = "AES/ECB/PKCS5Padding";
-
-    /** Upstream responses carry many groups (points, privileges, relation, …) we don't map. */
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
         .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
     private EncbinUtil() {}
 
-    /**
-     * Encrypts a payload object to ht/encbin bytes.
-     *
-     * @param payload        JSON-serializable object
-     * @param sharedSecretHex 32-byte shared secret as hex string
-     * @return raw encrypted bytes
-     */
     public static byte[] encrypt(Object payload, String sharedSecretHex) {
         try {
             byte[] plaintext = MAPPER.writeValueAsBytes(payload);
-            byte[] key = HexFormat.of().parseHex(sharedSecretHex);
-            Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"));
-            return cipher.doFinal(plaintext);
-        } catch (GeneralSecurityException e) {
-            throw new RuntimeException("ht/encbin encryption failed", e);
+            byte[] key = Hex.decode(sharedSecretHex);
+            byte[] output = new byte[plaintext.length + 32];
+            int len = crypt(plaintext, key, output, true);
+            byte[] result = new byte[len];
+            System.arraycopy(output, 0, result, 0, len);
+            return result;
         } catch (java.io.IOException e) {
             throw new RuntimeException("ht/encbin serialization failed", e);
         }
     }
 
-    /**
-     * Decrypts ht/encbin bytes back to a parsed JSON object.
-     *
-     * @param encrypted        encrypted bytes
-     * @param sharedSecretHex  32-byte shared secret as hex string
-     * @param clazz            target POJO class
-     */
     public static <T> T decrypt(byte[] encrypted, String sharedSecretHex, Class<T> clazz) {
         try {
-            return MAPPER.readValue(decryptToJson(encrypted, sharedSecretHex), clazz);
-        } catch (GeneralSecurityException e) {
-            throw new RuntimeException("ht/encbin decryption failed", e);
+            byte[] json = decryptToJson(encrypted, sharedSecretHex);
+            return MAPPER.readValue(json, clazz);
         } catch (java.io.IOException e) {
             throw new RuntimeException("ht/encbin deserialization failed", e);
+        } catch (Exception e) {
+            throw new RuntimeException("ht/encbin decryption failed", e);
+        }
+    }
+
+    public static byte[] decryptToJson(byte[] encrypted, String sharedSecretHex) {
+        try {
+            byte[] key = Hex.decode(sharedSecretHex);
+            byte[] output = new byte[encrypted.length + 32];
+            int len = crypt(encrypted, key, output, false);
+            byte[] result = new byte[len];
+            System.arraycopy(output, 0, result, 0, len);
+            return maybeGunzip(result);
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("ht/encbin decompression failed", e);
         }
     }
 
     /**
-     * Decrypts ht/encbin bytes to the raw (decompressed) JSON payload, without mapping to a POJO.
-     * Useful for inspecting fields the target DTO doesn't capture.
+     * AES-256-ECB with PKCS7 padding using BC's low-level API.
      */
-    public static byte[] decryptToJson(byte[] encrypted, String sharedSecretHex)
-            throws GeneralSecurityException, java.io.IOException {
-        byte[] key = HexFormat.of().parseHex(sharedSecretHex);
-        Cipher cipher = Cipher.getInstance(ALGORITHM);
-        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"));
-        byte[] decrypted = cipher.doFinal(encrypted);
-        return maybeGunzip(decrypted);
+    private static int crypt(byte[] input, byte[] key, byte[] output, boolean forEncryption) {
+        try {
+            BlockCipher engine = new AESEngine();
+            BlockCipherPadding padding = new PKCS7Padding();
+            PaddedBufferedBlockCipher cipher = new PaddedBufferedBlockCipher(engine, padding);
+            cipher.init(forEncryption, new org.bouncycastle.crypto.params.KeyParameter(key));
+            int len = cipher.processBytes(input, 0, input.length, output, 0);
+            len += cipher.doFinal(output, len);
+            return len;
+        } catch (Exception e) {
+            throw new RuntimeException("BC AES cipher failed", e);
+        }
     }
 
     private static byte[] maybeGunzip(byte[] data) throws java.io.IOException {
