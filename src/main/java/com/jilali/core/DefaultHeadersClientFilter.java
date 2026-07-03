@@ -4,6 +4,7 @@ import io.micronaut.core.order.Ordered;
 import io.micronaut.http.MutableHttpRequest;
 import io.micronaut.http.annotation.ClientFilter;
 import io.micronaut.http.annotation.RequestFilter;
+import io.micronaut.http.context.ServerRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +16,13 @@ import org.slf4j.LoggerFactory;
  *   <li>Device-context defaults (x-ht-version, x-ht-os, etc.) are used when the frontend omits them.</li>
  *   <li>Tracing headers are always generated fresh per call to maintain distributed trace hygiene.</li>
  * </ul>
+ * <p>
+ * {@code x-ht-uid} is special: the upstream rejects requests that omit it ({@code err_param}),
+ * but the Angular frontend doesn't know its caller uid without decoding the JWT, and adding JWT
+ * decoding to every HttpInterceptor would couple it to the auth scheme. We derive it here from
+ * the inbound {@code Authorization} header's JWT instead — the same trick
+ * {@link com.jilali.client.JilaliGateway#currentUserId} uses for the encrypted {@code userInfo}
+ * path, generalized via {@link JwtUtil#uidFromBearer}.
  */
 @ClientFilter(serviceId = "jlhub")
 public class DefaultHeadersClientFilter implements Ordered {
@@ -83,8 +91,32 @@ public class DefaultHeadersClientFilter implements Ordered {
             case "x-ht-build" -> "135";
             case "x-ht-did" -> "373b9d3f80345ace3ed2679e78de84cafc7cd481";
             case "accept-language" -> "en-MA;q=1.0, fr-MA;q=0.9, ar-MA;q=0.8";
+            // Derive the caller uid from the inbound JWT. The frontend never sends x-ht-uid,
+            // and upstream rejects requests that omit it (err_param).
+            case "x-ht-uid" -> deriveCallerUid();
             default -> null;
         };
+    }
+
+    /**
+     * Reads the inbound {@code Authorization} header (set by the frontend or, in its absence,
+     * the default token from {@link JilaliProperties}) and extracts the {@code uid} claim. Returns
+     * {@code null} if no JWT is available or its payload has no uid — the filter then skips the
+     * header, which is the same fail-soft behavior as the other defaults.
+     */
+    private String deriveCallerUid() {
+        String inboundAuth = ServerRequestContext.currentRequest()
+            .map(req -> req.getHeaders().get("authorization"))
+            .orElse(null);
+        String token = (inboundAuth != null && !inboundAuth.isBlank())
+            ? inboundAuth
+            : "Bearer " + properties.defaultAuthToken();
+        Long uid = JwtUtil.uidFromBearer(token);
+        if (uid == null) {
+            log.debug("[jlhub] could not derive x-ht-uid from inbound JWT");
+            return null;
+        }
+        return String.valueOf(uid);
     }
 
     @Override

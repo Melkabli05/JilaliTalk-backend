@@ -2,6 +2,7 @@ package com.jilali.client;
 
 import com.jilali.core.JilaliException;
 import com.jilali.core.JilaliProperties;
+import com.jilali.core.JwtUtil;
 import com.jilali.crypto.Curve25519SessionGenerator;
 import com.jilali.crypto.EncbinUtil;
 import com.jilali.room.AgoraTokenCipher;
@@ -32,10 +33,6 @@ import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.regex.Pattern;
-
 /**
  * The seam between our application and Jilali. Only the methods that perform real work beyond
  * envelope unwrapping live here:
@@ -56,8 +53,6 @@ public class JilaliGateway {
     private static final String VIP_TRIAL_SCENE_ID = "30000";
     private static final String VIP_TRIAL_FEATURE_ID = "00001";
     private static final String VIP_TRIAL_CARD_VERSION = "v1";
-
-    private static final Pattern UID_CLAIM_PATTERN = Pattern.compile("\"uid\"\\s*:\\s*(\\d+)");
 
     private final JilaliClient client;
     private final VipExperienceCardClient vipClient;
@@ -170,23 +165,7 @@ public class JilaliGateway {
         var inbound = ServerRequestContext.currentRequest().orElse(null);
         String header = inbound == null ? null : inbound.getHeaders().get("authorization");
         String token = header != null && !header.isBlank() ? header : "Bearer " + properties.defaultAuthToken();
-        return decodeUidClaim(token);
-    }
-
-    /** Extracts the {@code uid} claim from a {@code Bearer <jwt>} string without verifying its signature. */
-    private static Long decodeUidClaim(String bearerToken) {
-        String jwt = bearerToken.replaceFirst("(?i)^Bearer\\s+", "");
-        String[] parts = jwt.split("\\.");
-        if (parts.length < 2) {
-            return null;
-        }
-        try {
-            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-            var matcher = UID_CLAIM_PATTERN.matcher(payload);
-            return matcher.find() ? Long.parseLong(matcher.group(1)) : null;
-        } catch (IllegalArgumentException _) {
-            return null;
-        }
+        return JwtUtil.uidFromBearer(token);
     }
 
     /**
