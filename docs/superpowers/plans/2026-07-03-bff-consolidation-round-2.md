@@ -14,6 +14,7 @@
 - Frontend dependency direction is enforced by ESLint boundaries: `features → store → core → shared`. `shared/` imports nothing else in the app. A shared cross-cutting service (categories) belongs in `shared/data/`, not in `core/services/` or a feature.
 - Every Angular component/store change must keep `ChangeDetectionStrategy.OnPush` and avoid manual `.subscribe()` without `takeUntilDestroyed` (this plan doesn't introduce any new manual subscriptions).
 - No placeholder code, no TODOs. Every step below has complete, exact code.
+- **Automated unit tests are explicitly out of scope for this execution pass, per direct user instruction.** Tasks 1, 3, and 7 originally specified dedicated test files (`TextMatcherTest.java`, `categories.service.spec.ts`, `user-info.service.spec.ts`); those files are **not** to be created. Implement each task's production code directly from the "Write minimal implementation" step's code, skip the "write failing test" / "run test" steps, and verify instead via compilation (`./gradlew compileJava` / `npx tsc --noEmit`) and the task's manual verification step. Do not treat the absence of a test file as a defect in task review for this plan.
 - Two separate git repositories: `jilalibff` (backend) and `JilaliTalk-angular-frontend` (frontend), siblings under `/home/mohammed/Desktop/JilaliTalk/`. All file paths below are relative to the named repo. Commit separately in each repo.
 
 ---
@@ -22,78 +23,15 @@
 
 **Files:**
 - Create: `jilalibff/src/main/java/com/jilali/room/TextMatcher.java`
-- Test: `jilalibff/src/test/java/com/jilali/room/TextMatcherTest.java`
 
 **Interfaces:**
 - Produces: `TextMatcher.matches(List<String> haystacks, String query): boolean` — used by Task 2's `RoomsSearchService`.
 
 This is a faithful port of the frontend's `createSearchMatcher` (`JilaliTalk-angular-frontend/src/app/shared/utils/text-search.util.ts:36-52`): case- and accent-insensitive substring matching, every whitespace-separated query token must match at least one haystack field, blank query matches everything.
 
-- [ ] **Step 1: Write the failing test**
+No dedicated test file for this task — see the Global Constraints note on skipping automated unit tests for this pass. Verify via compilation and Task 2's manual `curl` check, which exercises this logic end-to-end.
 
-```java
-// jilalibff/src/test/java/com/jilali/room/TextMatcherTest.java
-package com.jilali.room;
-
-import org.junit.jupiter.api.Test;
-
-import java.util.Arrays;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-class TextMatcherTest {
-
-    @Test
-    void matches_emptyQueryMatchesEverything() {
-        assertTrue(TextMatcher.matches(List.of("Music Room"), ""));
-    }
-
-    @Test
-    void matches_blankQueryMatchesEverything() {
-        assertTrue(TextMatcher.matches(List.of("Music Room"), "   "));
-    }
-
-    @Test
-    void matches_isCaseInsensitive() {
-        assertTrue(TextMatcher.matches(List.of("Music Room"), "MUSIC"));
-    }
-
-    @Test
-    void matches_isAccentInsensitive() {
-        assertTrue(TextMatcher.matches(List.of("Café Room"), "cafe"));
-    }
-
-    @Test
-    void matches_everyTokenMustMatchSomeHaystack() {
-        assertTrue(TextMatcher.matches(List.of("Music Room", "DJ Mike"), "music mike"));
-        assertFalse(TextMatcher.matches(List.of("Music Room", "DJ Mike"), "music bob"));
-    }
-
-    @Test
-    void matches_ignoresNullAndBlankHaystacks() {
-        assertTrue(TextMatcher.matches(Arrays.asList(null, "", "Music Room"), "music"));
-    }
-
-    @Test
-    void matches_falseWhenNoHaystackContainsToken() {
-        assertFalse(TextMatcher.matches(List.of("Study Room"), "music"));
-    }
-
-    @Test
-    void matches_substringWithinAWordMatches() {
-        assertTrue(TextMatcher.matches(List.of("Musical Jam"), "music"));
-    }
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd jilalibff && ./gradlew test --tests "com.jilali.room.TextMatcherTest"`
-Expected: FAIL — compile error, `TextMatcher` does not exist.
-
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 1: Write the implementation**
 
 ```java
 // jilalibff/src/main/java/com/jilali/room/TextMatcher.java
@@ -156,16 +94,16 @@ public final class TextMatcher {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 2: Compile to verify it builds**
 
-Run: `cd jilalibff && ./gradlew test --tests "com.jilali.room.TextMatcherTest"`
-Expected: PASS, 8 tests, 0 failures.
+Run: `cd jilalibff && ./gradlew compileJava`
+Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 cd jilalibff
-git add src/main/java/com/jilali/room/TextMatcher.java src/test/java/com/jilali/room/TextMatcherTest.java
+git add src/main/java/com/jilali/room/TextMatcher.java
 git commit -m "feat(room): add TextMatcher, pure-logic port of frontend search matching"
 ```
 
@@ -183,7 +121,7 @@ git commit -m "feat(room): add TextMatcher, pure-logic port of frontend search m
 
 Fans out up to `maxPages` concurrent list-room calls (offsets `0, 20, 40, …`) and filters the combined result with `TextMatcher`. Bounded, not full-corpus — upstream (`GET /channel_list/voice`) has no keyword parameter (confirmed absent from `JilaliClient.java` and every captured request in `websocket_realtime.md`), so this replaces the frontend's up-to-10-sequential-round-trips auto-paginate loop with 1 parallel server-side fan-out, same result ceiling.
 
-No automated test for the orchestration itself, matching existing precedent: `RoomJoinService` (same `StructuredTaskScope` fan-out pattern, already in production since Round 1) has zero tests, because this project has no mocking framework (`build.gradle` lists no Mockito dependency) to fake `JilaliClient`, which is a declarative `@Client` HTTP interface, not something you can trivially hand-instantiate a fake for. The pure-logic piece (`TextMatcher`) already has full coverage from Task 1. Verification for this task is manual (Step 4 below) — matches how `RoomJoinService`/`join-bundle` was verified when it shipped.
+No automated test for the orchestration itself, matching existing precedent: `RoomJoinService` (same `StructuredTaskScope` fan-out pattern, already in production since Round 1) has zero tests, because this project has no mocking framework (`build.gradle` lists no Mockito dependency) to fake `JilaliClient`, which is a declarative `@Client` HTTP interface, not something you can trivially hand-instantiate a fake for. Verification for this task is manual (Step 4 below) — matches how `RoomJoinService`/`join-bundle` was verified when it shipped.
 
 - [ ] **Step 1: Write `RoomsSearchService`**
 
@@ -335,7 +273,6 @@ git commit -m "feat(room): add RoomsSearchService + GET /api/rooms/{type}/search
 
 **Files:**
 - Create: `JilaliTalk-angular-frontend/src/app/shared/data/categories.service.ts`
-- Test: `JilaliTalk-angular-frontend/src/app/shared/data/categories.service.spec.ts`
 
 **Interfaces:**
 - Consumes: `Category` (existing, `shared/data/categories.ts`); `API_BASE_URL` token (existing, `core/tokens/api-base-url.token.ts`).
@@ -343,86 +280,9 @@ git commit -m "feat(room): add RoomsSearchService + GET /api/rooms/{type}/search
 
 Verified two independent call sites hit `GET /rooms/categories` today: `header.component.ts`'s own `rxResource` (via `CreateRoomService.fetchCategories()`) and `RoomsStore`'s own `rxResource` (via `RoomsApi.fetchCategories()`). Fix: one root-provided service in `shared/data/` (the correct layer — both `core/` and `features/rooms/` are allowed to import `shared/`, but not each other) wrapping `HttpClient` with `shareReplay`, keyed by `busiType`, so concurrent or sequential callers coalesce onto one in-flight/cached HTTP call.
 
-- [ ] **Step 1: Write the failing test**
+No dedicated test file for this task — see the Global Constraints note on skipping automated unit tests for this pass. Verify via typecheck and Task 4's manual verification (Network tab check).
 
-```typescript
-// JilaliTalk-angular-frontend/src/app/shared/data/categories.service.spec.ts
-import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
-import { firstValueFrom } from 'rxjs';
-import { CategoriesService } from './categories.service';
-import { API_BASE_URL } from '@core/tokens/api-base-url.token';
-
-describe('CategoriesService', () => {
-  let service: CategoriesService;
-  let httpMock: HttpTestingController;
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api' },
-      ],
-    });
-    service = TestBed.inject(CategoriesService);
-    httpMock = TestBed.inject(HttpTestingController);
-  });
-
-  afterEach(() => {
-    httpMock.verify();
-  });
-
-  it('fetches categories from GET /rooms/categories', async () => {
-    const promise = firstValueFrom(service.fetchCategories(2));
-    const req = httpMock.expectOne((r) => r.url === '/api/rooms/categories' && r.params.get('busiType') === '2');
-    req.flush({ items: [{ id: 1, name: 'Music', bgColor: null, fontColor: null, topics: [] }] });
-
-    const result = await promise;
-    expect(result).toEqual([{ id: 1, name: 'Music', bgColor: null, fontColor: null, topics: [] }]);
-  });
-
-  it('coalesces two concurrent calls for the same busiType into one HTTP request', async () => {
-    const first = firstValueFrom(service.fetchCategories(2));
-    const second = firstValueFrom(service.fetchCategories(2));
-
-    const req = httpMock.expectOne((r) => r.url === '/api/rooms/categories');
-    req.flush({ items: [] });
-
-    await Promise.all([first, second]);
-    httpMock.verify(); // throws if a second request was made
-  });
-
-  it('a later call for the same busiType reuses the cached result without a new HTTP request', async () => {
-    const first = firstValueFrom(service.fetchCategories(2));
-    httpMock.expectOne((r) => r.url === '/api/rooms/categories').flush({ items: [] });
-    await first;
-
-    const second = await firstValueFrom(service.fetchCategories(2));
-    expect(second).toEqual([]);
-    httpMock.expectNone((r) => r.url === '/api/rooms/categories');
-  });
-
-  it('fetches separately for a different busiType', async () => {
-    const first = firstValueFrom(service.fetchCategories(2));
-    httpMock.expectOne((r) => r.params.get('busiType') === '2').flush({ items: [] });
-    await first;
-
-    const second = firstValueFrom(service.fetchCategories(1));
-    httpMock.expectOne((r) => r.params.get('busiType') === '1').flush({ items: [] });
-    await second;
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd JilaliTalk-angular-frontend && npx vitest run src/app/shared/data/categories.service.spec.ts`
-Expected: FAIL — `categories.service.ts` does not exist.
-
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 1: Write the implementation**
 
 ```typescript
 // JilaliTalk-angular-frontend/src/app/shared/data/categories.service.ts
@@ -470,16 +330,16 @@ export class CategoriesService {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 2: Run typecheck to verify it compiles**
 
-Run: `cd JilaliTalk-angular-frontend && npx vitest run src/app/shared/data/categories.service.spec.ts`
-Expected: PASS, 4 tests.
+Run: `cd JilaliTalk-angular-frontend && npx tsc --noEmit`
+Expected: no errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 cd JilaliTalk-angular-frontend
-git add src/app/shared/data/categories.service.ts src/app/shared/data/categories.service.spec.ts
+git add src/app/shared/data/categories.service.ts
 git commit -m "feat(shared): add CategoriesService, dedupes GET /rooms/categories across callers"
 ```
 
@@ -914,76 +774,15 @@ git commit -m "perf(room): parallelize makeVisible()'s join-bundle + join-room c
 - Modify: `JilaliTalk-angular-frontend/src/app/shared/ui/user-info-modal/user-info-modal.component.ts`
 - Modify: `JilaliTalk-angular-frontend/src/app/features/room/data/ghost-audience.util.ts`
 - Modify: `JilaliTalk-angular-frontend/src/app/features/room/feature/moderation/user-action-modal.ts`
-- Test: `JilaliTalk-angular-frontend/src/app/core/services/user-info.service.spec.ts`
 
 **Interfaces:**
-- Produces: `UserInfoService.isStale(userId: number): boolean` — new public method, consumed by the three call sites above (plus any others found by the Step 5 grep).
+- Produces: `UserInfoService.isStale(userId: number): boolean` — new public method, consumed by the three call sites above (plus any others found by the Step 3 grep).
 
 Root cause (verified via grep, not assumed): every call site gates `fetchUserInfo()` behind `if (!getUserInfo(uid))`. Since the cache never expires, once a uid is first seen, `fetchUserInfo` is never called again for it for the rest of the session — VIP status/avatar/nickname changes never surface. The fix stores a `fetchedAt` timestamp per entry and exposes `isStale()`, then each call site's guard becomes `if (!getUserInfo(uid) || isStale(uid))`.
 
-- [ ] **Step 1: Write the failing test for `isStale`**
+No dedicated test file for this task — see the Global Constraints note on skipping automated unit tests for this pass. Verify via typecheck and the read-through in Step 4.
 
-```typescript
-// JilaliTalk-angular-frontend/src/app/core/services/user-info.service.spec.ts
-import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { API_BASE_URL } from '@core/tokens/api-base-url.token';
-import { UserInfoService } from './user-info.service';
-
-describe('UserInfoService.isStale', () => {
-  let service: UserInfoService;
-  let httpMock: HttpTestingController;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    TestBed.configureTestingModule({
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api' },
-      ],
-    });
-    service = TestBed.inject(UserInfoService);
-    httpMock = TestBed.inject(HttpTestingController);
-  });
-
-  afterEach(() => {
-    httpMock.verify();
-    vi.useRealTimers();
-  });
-
-  it('a never-fetched uid is stale', () => {
-    expect(service.isStale(1)).toBe(true);
-  });
-
-  it('a freshly-fetched uid is not stale', async () => {
-    const promise = service.fetchUserInfo(1);
-    httpMock.expectOne((r) => r.url === '/api/users/info').flush({ userId: 1, nickname: 'A' });
-    await promise;
-
-    expect(service.isStale(1)).toBe(false);
-  });
-
-  it('an entry older than 5 minutes is stale', async () => {
-    const promise = service.fetchUserInfo(1);
-    httpMock.expectOne((r) => r.url === '/api/users/info').flush({ userId: 1, nickname: 'A' });
-    await promise;
-
-    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
-
-    expect(service.isStale(1)).toBe(true);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd JilaliTalk-angular-frontend && npx vitest run src/app/core/services/user-info.service.spec.ts`
-Expected: FAIL — `isStale` does not exist on `UserInfoService`.
-
-- [ ] **Step 3: Implement `isStale` in `UserInfoService`**
+- [ ] **Step 1: Implement `isStale` in `UserInfoService`**
 
 In `JilaliTalk-angular-frontend/src/app/core/services/user-info.service.ts`, add a TTL constant near the top:
 
@@ -1055,12 +854,7 @@ Update `doFetch` to store the new shape:
   }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `cd JilaliTalk-angular-frontend && npx vitest run src/app/core/services/user-info.service.spec.ts`
-Expected: PASS, 3 tests.
-
-- [ ] **Step 5: Find and update every call-site guard**
+- [ ] **Step 2: Find and update every call-site guard**
 
 Run: `cd JilaliTalk-angular-frontend && grep -rn "getUserInfo(" src/app --include="*.ts" | grep -v "user-info.service"`
 
@@ -1102,24 +896,24 @@ with:
     if (uid && (!this.userInfoService.getUserInfo(uid) || this.userInfoService.isStale(uid))) {
 ```
 
-If the Step 5 grep finds any additional `if (!getUserInfo(...))`-shaped guard beyond these three, apply the same `|| isStale(...)` addition to it.
+If the Step 2 grep finds any additional `if (!getUserInfo(...))`-shaped guard beyond these three, apply the same `|| isStale(...)` addition to it.
 
 Do not change `comments-store.ts:86` or `room-page-base.ts:406` — these only *read* `getUserInfo()` for display, they don't gate a `fetchUserInfo()` call, so there's no staleness decision to make there.
 
-- [ ] **Step 6: Run typecheck**
+- [ ] **Step 3: Run typecheck**
 
 Run: `cd JilaliTalk-angular-frontend && npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 7: Manual verification**
+- [ ] **Step 4: Manual verification**
 
-This is hard to verify end-to-end without waiting 5 real minutes or manipulating the clock in a running app, so verification here is the unit test from Steps 1-4 plus a read-through confirming all three call sites were updated (`grep -n "isStale" src/app -r` should show exactly 4 matches: the service definition + 3 call sites, unless Step 5 found more).
+Read-through: confirm all three call sites were updated (`grep -n "isStale" src/app -r` should show exactly 4 matches: the service definition + 3 call sites, unless Step 2 found more). Open the user-info modal for a user, close it, wait, reopen — confirm no crash and the profile still renders (functional smoke test of the new cache shape).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 cd JilaliTalk-angular-frontend
-git add src/app/core/services/user-info.service.ts src/app/core/services/user-info.service.spec.ts src/app/shared/ui/user-info-modal/user-info-modal.component.ts src/app/features/room/data/ghost-audience.util.ts src/app/features/room/feature/moderation/user-action-modal.ts
+git add src/app/core/services/user-info.service.ts src/app/shared/ui/user-info-modal/user-info-modal.component.ts src/app/features/room/data/ghost-audience.util.ts src/app/features/room/feature/moderation/user-action-modal.ts
 git commit -m "fix(user-info): add 5-minute staleness check, previously cached forever per session"
 ```
 
@@ -1127,7 +921,9 @@ git commit -m "fix(user-info): add 5-minute staleness check, previously cached f
 
 ## Final verification (after all tasks)
 
-- [ ] Backend: `cd jilalibff && ./gradlew build` — clean build, all tests pass.
-- [ ] Frontend: `cd JilaliTalk-angular-frontend && npx tsc --noEmit && npm run lint && npx vitest run` — no errors, all tests pass.
+This plan adds no new automated tests (see Global Constraints); the commands below run the pre-existing suites as a regression check, not to validate new coverage.
+
+- [ ] Backend: `cd jilalibff && ./gradlew build` — clean build, existing tests still pass.
+- [ ] Frontend: `cd JilaliTalk-angular-frontend && npx tsc --noEmit && npm run lint && npx vitest run` — no errors, existing tests still pass.
 - [ ] Frontend: `npm run verify` (boundaries, cycles, dependency graph) — clean.
 - [ ] Manual, per the spec's §5: open rooms list → create-room modal, confirm exactly one `/rooms/categories` request for the whole session; search for a room past the first page, confirm one request; minimize/restore a room, confirm the two `makeVisible` requests overlap in the Network tab.
