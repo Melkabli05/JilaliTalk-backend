@@ -17,3 +17,6 @@ bin/
 
 # Local H2 database (platform-auth storage — see application.yml datasources.default)
 data/
+
+# Worktrees (superpowers subagent-driven-development)
+.worktrees/
