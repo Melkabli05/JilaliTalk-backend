@@ -159,9 +159,11 @@ public class JilaliGateway {
      * {@code DefaultHeadersClientFilter} falls back to. The frontend doesn't track its own user id
      * before a room is joined (it only learns it from {@code voice_room_info}'s response), and
      * doesn't send an {@code x-ht-uid} header at all yet — so the JWT already carrying this
-     * request's identity is the only reliable source.
+     * request's identity is the only reliable source. Public so callers like
+     * {@link com.jilali.user.ProfileBundleService} can tell whether a requested profile is the
+     * viewer's own (to decide which extra calls to fan out).
      */
-    private Long currentUserId() {
+    public Long currentUserId() {
         var inbound = ServerRequestContext.currentRequest().orElse(null);
         String header = inbound == null ? null : inbound.getHeaders().get("authorization");
         String token = header != null && !header.isBlank() ? header : "Bearer " + properties.defaultAuthToken();
@@ -190,11 +192,15 @@ public class JilaliGateway {
         String token = properties.defaultAuthToken();
         String deviceId = properties.deviceId();
         // x-ht-uid must identify who is making this call (the shared service account the JWT
-        // authenticates as), never the profile being looked up — see currentUserId()'s doc
-        // comment for the same concern elsewhere in this class. Looking up any user other than
-        // the service account itself sent a mismatched x-ht-uid here, which is almost certainly
-        // why every userInfo() call upstream was rejected with BAD_REQUEST.
-        Long callerUid = currentUserId();
+        // authenticates as), never the profile being looked up, and — critically — it must match
+        // the uid embedded in whichever token is actually attached below. This call always uses
+        // the fixed service-account token (not the caller's own forwarded JWT — see the
+        // @Cacheable doc above: the cache is keyed by userId alone, so the upstream identity used
+        // to fetch it must stay constant regardless of who's asking). currentUserId() prioritizes
+        // the caller's *own* inbound JWT when present, which mismatches this fixed token's uid —
+        // that mismatch is why every userInfo() call upstream was rejected with BAD_REQUEST.
+        // Deriving the uid from `token` itself keeps the header and the token self-consistent.
+        Long callerUid = JwtUtil.uidFromBearer("Bearer " + token);
 
         HttpRequest<byte[]> httpRequest = HttpRequest.POST("/profile/v2/userinfo", encryptedPayload)
             .header("ht-content-type", "ht/encbin")

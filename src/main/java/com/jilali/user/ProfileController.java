@@ -1,15 +1,23 @@
 package com.jilali.user;
 
 import com.jilali.client.ProfileClient;
+import com.jilali.user.dto.BlockListResponse;
 import com.jilali.user.dto.FollowRequest;
 import com.jilali.user.dto.FollowResultResponse;
 import com.jilali.user.dto.FollowersResponse;
 import com.jilali.user.dto.FollowingResponse;
 import com.jilali.user.dto.LikeCountResponse;
+import com.jilali.user.dto.PayChatInfoResponse;
+import com.jilali.user.dto.ProfileBundleResponse;
+import com.jilali.user.dto.ProfileIncrementResponse;
+import com.jilali.user.dto.ProfileLimitationsResponse;
 import com.jilali.user.dto.ProfileMeResponse;
 import com.jilali.user.dto.ProfileStatsResponse;
+import com.jilali.user.dto.ReminderMomentResponse;
+import com.jilali.user.dto.UnfollowRequest;
+import com.jilali.user.dto.UnfollowResultResponse;
 import com.jilali.user.dto.UserLangsResponse;
-import com.jilali.user.dto.VisitRequest;
+import com.jilali.user.dto.UserTagsResponse;
 import com.jilali.user.dto.VisitorHistoryRequest;
 import com.jilali.user.dto.VisitorsResponse;
 import com.jilali.user.dto.ProfileEditRequest;
@@ -18,12 +26,10 @@ import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
-import io.micronaut.http.annotation.Header;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
-import jakarta.validation.constraints.NotBlank;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,9 +42,11 @@ public class ProfileController {
     private static final Logger log = LoggerFactory.getLogger(ProfileController.class);
 
     private final ProfileClient profileClient;
+    private final ProfileBundleService bundleService;
 
-    public ProfileController(ProfileClient profileClient) {
+    public ProfileController(ProfileClient profileClient, ProfileBundleService bundleService) {
         this.profileClient = profileClient;
+        this.bundleService = bundleService;
     }
 
     @Get("/me")
@@ -68,6 +76,26 @@ public class ProfileController {
     public FollowResultResponse follow(@Body FollowRequest body) {
         return profileClient.follow(
             new ProfileClient.FollowBody(body.followUid(), body.nickName()));
+    }
+
+    /**
+     * Distinct upstream call from {@link #follow} — {@code /relation/follow} is idempotent,
+     * not a toggle (verified live: two consecutive calls both returned {@code data.status:1}).
+     * Un-following requires {@code /relation/unfollow}, whose response carries only
+     * {@code list_timestamp} (see {@link UnfollowResultResponse}); normalized here into the
+     * same {@link FollowResultResponse} shape {@link #follow} returns, with
+     * {@code data.status:0}, so the frontend has one response type for both directions and can
+     * keep reading {@code data.status} (1 = following, 0 = not) as the source of truth.
+     */
+    @Post("/unfollow")
+    public FollowResultResponse unfollow(@Body UnfollowRequest body) {
+        UnfollowResultResponse result = profileClient.unfollow(
+            new ProfileClient.UnfollowBody(body.unfollowUid(), body.nickName()));
+        FollowResultResponse.FollowResultData data = result.data() == null
+            ? null
+            : new FollowResultResponse.FollowResultData(
+                result.data().listTimestamp(), 0, 0, result.data().listTimestamp());
+        return new FollowResultResponse(result.status(), result.message(), data);
     }
 
     @Post("/visit")
@@ -117,6 +145,52 @@ public class ProfileController {
     @Post("/edit")
     public ProfileEditResponse edit(@Body ProfileEditRequest body) {
         return profileClient.editProfile(body);
+    }
+
+    @Get("/limitations")
+    public ProfileLimitationsResponse limitations() {
+        return profileClient.limitations();
+    }
+
+    @Get("/increment")
+    public ProfileIncrementResponse increment(
+            @QueryValue(defaultValue = "English") String lang,
+            @QueryValue(defaultValue = "6.2.0") String version) {
+        return profileClient.increment(new ProfileClient.IncrementBody(lang, version));
+    }
+
+    @Get("/pay-chat-info")
+    public PayChatInfoResponse payChatInfo(@QueryValue("toId") long toId) {
+        return profileClient.payChatInfo(toId);
+    }
+
+    @Get("/reminder-moment")
+    public ReminderMomentResponse reminderMoment(@QueryValue("to") long to) {
+        return profileClient.reminderMoment(to);
+    }
+
+    @Get("/blocklist")
+    public BlockListResponse blocklist() {
+        return profileClient.blockList();
+    }
+
+    @Get("/tags")
+    public UserTagsResponse tags(
+            @QueryValue(defaultValue = "English") String lang,
+            @QueryValue(defaultValue = "6.3.0") String version) {
+        return profileClient.userTags(lang, 0, 0, version);
+    }
+
+    /**
+     * Everything a profile page needs in one round trip, fanned out concurrently server-side
+     * ({@link ProfileBundleService#bundle}) — mirrors {@code RoomController.joinBundle}'s
+     * pattern for rooms. Which extra calls get fanned out depends on whether {@code userId} is
+     * the caller's own account (own stats + edit limitations) or someone else's (pay-chat gate +
+     * moment-reminder nudge) — see the service for the exact self-vs-other dispatch.
+     */
+    @Get("/{userId}/bundle")
+    public ProfileBundleResponse bundle(long userId) {
+        return bundleService.bundle(userId);
     }
 
     private static long toLong(Object v) {

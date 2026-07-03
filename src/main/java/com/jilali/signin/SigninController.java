@@ -5,6 +5,7 @@ import com.jilali.client.JilaliResponses;
 import com.jilali.room.dto.RoomLevelConfigResponse;
 import com.jilali.signin.dto.ClaimRewardRequest;
 import com.jilali.signin.dto.ClaimTaskRewardRequest;
+import com.jilali.signin.dto.RoomLevelBundleResponse;
 import com.jilali.signin.dto.RoomLevelRewardResponse;
 import com.jilali.signin.dto.VoiceSignPanelResponse;
 import com.jilali.signin.dto.VoiceTasksResponse;
@@ -20,6 +21,7 @@ import jakarta.validation.Valid;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.StructuredTaskScope;
 
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/signin")
@@ -68,5 +70,30 @@ public class SigninController {
             @QueryValue String cname,
             @QueryValue("host_id") long hostId) {
         return JilaliResponses.requireData(client.roomLevelConfig(cname, hostId));
+    }
+
+    /**
+     * Bundles {@code room-level-reward} and {@code room-level-config} — the two calls the
+     * frontend's rewards tab always makes together — into one round trip, fanned out
+     * concurrently server-side. Mirrors {@code RoomJoinService.joinBundle}.
+     */
+    @Get("/room-level-bundle")
+    public RoomLevelBundleResponse roomLevelBundle(
+            @QueryValue String cname,
+            @QueryValue("host_id") long hostId,
+            @QueryValue(defaultValue = "1") int level) {
+        try (var scope = StructuredTaskScope.open()) {
+            var rewardTask = scope.fork(() -> JilaliResponses.unwrap(client.roomLevelReward(cname, hostId, level)));
+            var configTask = scope.fork(() -> JilaliResponses.requireData(client.roomLevelConfig(cname, hostId)));
+
+            scope.join();
+
+            return new RoomLevelBundleResponse(rewardTask.get(), configTask.get());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while fetching room level bundle", e);
+        } catch (StructuredTaskScope.FailedException e) {
+            throw new RuntimeException("Upstream fetch failed during room level bundle", e.getCause());
+        }
     }
 }

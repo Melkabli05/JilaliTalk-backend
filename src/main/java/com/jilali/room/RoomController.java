@@ -13,11 +13,12 @@ import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
 import com.jilali.room.dto.EndChannelRequest;
 import com.jilali.room.dto.JoinBundleResponse;
-import com.jilali.room.dto.AudienceRevisionResponse;
+import com.jilali.room.dto.AudienceReconcileResponse;
 import com.jilali.realtime.RoomEventSource;
 import com.jilali.room.dto.LanguageGroup;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.room.dto.VoiceRoomInfoResponse;
+import com.jilali.user.dto.RoomUserListRequest;
 import io.micronaut.cache.annotation.Cacheable;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;
@@ -139,10 +140,10 @@ public class RoomController {
      * call this instead of {@code /voice}, {@code /live}, {@code /stage/list},
      * {@code /users/rooms/list}, and {@code /comments} individually.
      *
-     * <p>Deliberately <em>not</em> used by the audience-revision reconciliation poll in the
-     * frontend's {@code AudienceStore} — that only needs a roster refresh, so pulling in room
-     * info + stage + comments on every drift-corrected poll would waste three upstream calls
-     * per check. That poll intentionally keeps calling {@code /users/rooms/list} directly.
+     * <p>Deliberately <em>not</em> used by the audience-reconciliation poll in the frontend's
+     * {@code AudienceStore} — that only needs a roster refresh, so pulling in room info + stage +
+     * comments on every drift-corrected poll would waste three upstream calls per check. That
+     * poll uses {@link #audienceReconcile} instead.
      */
     @Get("/{cname}/join-bundle")
     public JoinBundleResponse joinBundle(
@@ -152,15 +153,25 @@ public class RoomController {
     }
 
     /**
-     * Returns the audience roster revision for a room. Clients poll this to decide whether to
-     * refetch — they only call {@code POST /api/users/rooms/list} when revision > their
-     * last-known value, eliminating the fixed 30-second polling that blindly refetches
-     * regardless of activity. See the "Deliberately not used by..." note on {@link #joinBundle}
-     * for why this poll doesn't go through the join-bundle endpoint instead.
+     * One round trip for the frontend's 30-second audience-drift-correction poll. Every 30s
+     * {@code AudienceStore} sends its last-known revision as {@code sinceRevision}; if the
+     * server-side revision (see {@link RoomEventSource#audienceRevision}) hasn't moved, this
+     * returns immediately with {@code changed=false} and makes no upstream call at all. Only a
+     * real roster change costs an upstream {@code roomUserList} round trip. Replaces the
+     * previous two-call sequence (a revision check followed by a conditional full refetch).
      */
-    @Get("/{cname}/audience-revision")
-    public AudienceRevisionResponse audienceRevision(String cname) {
-        return new AudienceRevisionResponse(roomEventSource.audienceRevision(cname));
+    @Get("/{cname}/audience-reconcile")
+    public AudienceReconcileResponse audienceReconcile(
+            String cname,
+            @QueryValue(defaultValue = "2") int busiType,
+            @QueryValue(defaultValue = "-1") int sinceRevision) {
+        int revision = roomEventSource.audienceRevision(cname);
+        if (revision <= sinceRevision) {
+            return new AudienceReconcileResponse(revision, false, null);
+        }
+        var roster = JilaliResponses.unwrap(
+                client.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType)));
+        return new AudienceReconcileResponse(revision, true, roster.list());
     }
 
     /**
