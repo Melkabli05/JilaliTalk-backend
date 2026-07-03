@@ -50,13 +50,16 @@ public class RoomController {
     private final JilaliProperties properties;
     private final RoomJoinService roomJoinService;
     private final RoomEventSource roomEventSource;
+    private final RoomsSearchService roomsSearchService;
 
     public RoomController(JilaliClient client, JilaliProperties properties,
-                          RoomJoinService roomJoinService, RoomEventSource roomEventSource) {
+                          RoomJoinService roomJoinService, RoomEventSource roomEventSource,
+                          RoomsSearchService roomsSearchService) {
         this.client = client;
         this.properties = properties;
         this.roomJoinService = roomJoinService;
         this.roomEventSource = roomEventSource;
+        this.roomsSearchService = roomsSearchService;
     }
 
     // ---- Discovery ----
@@ -96,6 +99,15 @@ public class RoomController {
     public ChannelListItem recommendSingleVoiceRoom(
             @QueryValue(defaultValue = "0") int langId) {
         return JilaliResponses.unwrap(client.recommendSingleVoiceRoom(langId));
+    }
+
+    @Get("/{type}/search")
+    public ChannelListResponse searchRooms(
+            String type,
+            @QueryValue String query,
+            @QueryValue(defaultValue = "0") int langId,
+            @QueryValue(defaultValue = "5") int maxPages) {
+        return roomsSearchService.search(type, query, langId, maxPages);
     }
 
     @Cacheable("reference-data")
