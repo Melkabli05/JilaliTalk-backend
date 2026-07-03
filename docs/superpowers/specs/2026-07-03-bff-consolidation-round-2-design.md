@@ -11,57 +11,35 @@ Findings not included in this round (`PermissionsService` duplication, DM/notifi
 
 ## 1. Problem
 
-Four independent, verified issues:
+Four independent, verified issues (a fifth, rooms-list/recommended bundling, was investigated and explicitly deferred — see §3.1):
 
-1. **Rooms-list page fires 3 unbundled calls.** `RoomsStore`/`LiveRoomsStore` (`features/rooms/state/*.ts`) each run three separate `rxResource`s on load — main list (`GET /rooms/{type}`), recommended list (`GET /rooms/{type}/recommend`), categories (`GET /rooms/categories`). No aggregation, unlike room-entry's `join-bundle`.
-2. **Categories double-fetched, double-cached client-side.** `create-room.service.ts` and `header.component.ts` both independently call `GET /rooms/categories` (for the create-room modal) while `RoomsStore` calls it again for the browse page — three call sites, no shared Angular-side cache, even though the BFF already serves it from a 6h `@Cacheable`.
-3. **`makeVisible()` still sequential.** `room-page.ts:347-381` calls `fetchJoinBundle()` then `joinRoom()` one after another for the ghost-listener-becomes-visible path — the exact shape `join-bundle` fixed for initial entry, not extended here.
-4. **Search silently incomplete + sequential waterfall.** `filterRooms()` only ever filters the pages already loaded into `RoomsStore`. `computeIsAutoSearching()` compensates by auto-paginating one page at a time (up to `MAX_SEARCH_OFFSET = 200` rooms, i.e. up to 10 sequential `GET` calls) whenever a debounced search has zero local matches. Upstream (`GET /channel_list/voice`) has no `keyword` parameter (confirmed — not present anywhere in `JilaliClient.java` or the captured traffic in `websocket_realtime.md`), so search can't move upstream; it can only be shifted from "10 sequential frontend-triggered round trips" to "1 BFF round trip that fans the same pages out in parallel."
-5. **`UserInfoService` cache never evicts.** `user-info.service.ts:239,294-310` — a plain `signal<Map>` with no TTL. In a long room session with audience churn, entries accumulate forever and VIP/avatar/nickname changes never surface after first fetch.
+1. **Categories double-fetched, double-cached client-side.** `create-room.service.ts` (via `header.component.ts`) and `RoomsStore` (via `rooms-api.ts`) each independently call `GET /rooms/categories` — two call sites, no shared Angular-side cache, even though the BFF already serves it from a 6h `@Cacheable`.
+2. **`makeVisible()` still sequential.** `room-page.ts:347-381` calls `fetchJoinBundle()` then `joinRoom()` one after another for the ghost-listener-becomes-visible path — the exact shape `join-bundle` fixed for initial entry, not extended here.
+3. **Search silently incomplete + sequential waterfall.** `filterRooms()` only ever filters the pages already loaded into `RoomsStore`. `computeIsAutoSearching()` compensates by auto-paginating one page at a time (up to `MAX_SEARCH_OFFSET = 200` rooms, i.e. up to 10 sequential `GET` calls) whenever a debounced search has zero local matches. Upstream (`GET /channel_list/voice`) has no `keyword` parameter (confirmed — not present anywhere in `JilaliClient.java` or the captured traffic in `websocket_realtime.md`), so search can't move upstream; it can only be shifted from "10 sequential frontend-triggered round trips" to "1 BFF round trip that fans the same pages out in parallel."
+4. **`UserInfoService` is fetched-once-per-session in practice, despite its own doc comment.** `user-info.service.ts:239,294-310` — the service's cache doesn't itself gate the HTTP call (its doc comment says every `fetchUserInfo()` call reaches the BFF, which is server-side cached for 24h). The actual bug is at every call site (verified via grep — `user-info-modal.component.ts:721`, `ghost-audience.util.ts:50`, `user-action-modal.ts:798`, and others): all of them guard the call with `if (!getUserInfo(uid)) fetchUserInfo(uid)`, so once a uid is cached, `fetchUserInfo` is never invoked for it again for the rest of the session — VIP status/avatar/nickname changes never surface after first sight.
 
 ## 2. Approach
 
 Extend the exact pattern already proven in Round 1 — no new architecture:
 
-- **Bundle endpoints** (`StructuredTaskScope.open()`, mirroring `RoomJoinService.joinBundle`) for #1 and #4.
-- **Reuse the existing `@Cacheable("reference-data")` categories endpoint** for #2 — the fix here is entirely frontend-side (one shared resource instead of three independent fetches); no backend change needed.
-- **Reorder, don't rebuild** for #3 — `makeVisible()` already has `fetchJoinBundle()` available; it just needs to stop calling `joinRoom()` as a second step when the bundle can carry what's needed.
-- **Bounded TTL cache** for #5, matching the pattern already used for `UserInfo` server-side (`JilaliGateway`'s Caffeine cache) — same idea, client-side, much smaller scope.
+- **Reuse the existing `@Cacheable("reference-data")` categories endpoint** for #1 — the fix here is entirely frontend-side (one shared resource instead of two independent fetches); no backend change needed.
+- **Parallelize, don't rebuild** for #2 — `makeVisible()` already has `fetchJoinBundle()` available; it just needs to stop `await`-chaining it before `joinRoom()`.
+- **Bundle endpoint** (`StructuredTaskScope.open()`, mirroring `RoomJoinService.joinBundle`) for #3 (search).
+- **Bounded TTL cache** for #4, matching the pattern already used for `UserInfo` server-side (`JilaliGateway`'s Caffeine cache) — same idea, client-side, much smaller scope.
 
 ## 3. Design
 
-### 3.1 `GET /api/rooms/{type}/page-bundle` (new)
+### 3.1 Rooms-list + recommended bundling — deferred, not in this round
 
-Fans out the three rooms-list calls concurrently, same shape as `joinBundle`:
+Re-examined during implementation planning: unlike room-entry's four calls (which were genuinely sequential-or-blocking before `join-bundle`), `RoomsStore`'s `roomsPage` and `recommendedResource` are two independent `rxResource`s that Angular already fires concurrently — the win from bundling them is request *count*, not latency. Bundling them correctly is non-trivial: `recommendedResource` is keyed only by `type` (fetched once per type/language change), while the main list is keyed by `{type, offset, langId}` and re-fires on every `loadMore()`. A naive bundle keyed by the same params as the paginated list would make `loadMore()` needlessly re-fetch recommended too, which is a regression, not a fix — recommended is meant to be fetched once per type/language change, not once per page.
 
-```java
-// RoomController.java
-@Get("/{type}/page-bundle")
-public RoomsPageBundleResponse roomsPageBundle(
-        String type, // "voice" | "live"
-        @QueryValue(defaultValue = "0") int langId,
-        @QueryValue(defaultValue = "20") int limit,
-        @QueryValue(defaultValue = "0") int offset,
-        @QueryValue(defaultValue = "1") int refresh) {
-    return roomsPageService.pageBundle(type, langId, limit, offset, refresh);
-}
-```
+**Decision: defer this.** The correct fix (bundle only fires for the offset=0 case; pagination continues hitting the existing plain list endpoint; recommended value is held stable across loadMore) is implementable but adds real complexity for a request-count win only, with no measured evidence yet that upstream call volume from this path is a problem. Revisit if upstream rate limits or the BFF's own load become a measured concern. §3.2 (categories) and §3.4 (search) remain in scope — those are both correctness/latency issues, not just request-count.
 
-New `RoomsPageService` (sibling to `RoomJoinService`, same `StructuredTaskScope` pattern) forks three tasks — `listVoiceRooms`/`listLiveRooms` dispatched by `type`, `recommendVoiceRooms`/`recommendLiveRooms`, and `categoryTopicList` (already `@Cacheable`, so this fork is nearly free once warm) — and returns:
+### 3.2 Shared `CategoriesService` (new, `shared/data/`)
 
-```java
-public record RoomsPageBundleResponse(
-    ChannelListResponse rooms,
-    ChannelListResponse recommended,
-    CategoryTopicListResponse categories
-) {}
-```
+Verified: `rooms-model.ts` and `shared/data/categories.ts` independently declare structurally identical `Category`/`CategoryTopic` interfaces, and two separate call sites hit `GET /rooms/categories` — `header.component.ts`'s own `rxResource` (via `CreateRoomService.fetchCategories()`) and `RoomsStore`'s own `rxResource` (via `RoomsApi.fetchCategories()`). `header.component.ts` is the persistent app-shell header (mounted for the whole session), so its fetch typically fires before or alongside any feature page's.
 
-Frontend: `RoomsStore`/`LiveRoomsStore` collapse their three `rxResource`s into one `rxResource<RoomsPageBundleResponse, Params>`, splitting `rooms()`, `recommendedRooms()`, `categories()` as computed signals off the single resource — same external signal surface, so downstream components (`rooms-page.component.ts` etc.) don't change.
-
-### 3.2 Shared categories resource
-
-Given `/rooms/categories` is already server-cached with a 6h TTL, the fix is purely about not re-issuing three independent HTTP calls for identical data across the session. Add one root-provided `CategoriesResource`-style service (or reuse the new page-bundle's `categories()` for the browse page, and give `create-room.service.ts`/`header.component.ts` a single shared `rxResource` instance via a root-provided service) so all three call sites read from one in-flight/cached request instead of three.
+Fix: one new root-provided `CategoriesService` in `shared/data/` (the correct layer per this codebase's dependency rules — `core → shared` and `features → shared` are both legal edges, `core → features` and cross-feature imports are not) wrapping `HttpClient` with `shareReplay({ bufsize: 1, refCount: false })` keyed by `busiType`, so concurrent or sequential callers coalesce onto one in-flight/cached HTTP call regardless of call order. `rooms-model.ts`'s duplicate `Category`/`CategoryTopic` interfaces are deleted in favor of importing from `shared/data/categories.ts`. `CreateRoomService.fetchCategories()` and `RoomsApi.fetchCategories()` both delegate to the new service instead of calling `HttpClient` directly.
 
 ### 3.3 `makeVisible()` — parallelize, don't chain
 
@@ -88,30 +66,32 @@ This is explicitly **not** a full-corpus search — it's bounded to `maxPages ×
 
 ### 3.5 `UserInfoService` TTL
 
-Add a `fetchedAt: number` alongside each cached entry; on read, treat entries older than a configurable TTL (suggest 5 minutes, matching the room heartbeat cadence's order of magnitude) as stale and refetch. No backend change.
+Store `fetchedAt: number` alongside each cached `UserInfo` entry (wrap in an internal `{ info: UserInfo; fetchedAt: number }`, `getUserInfo()`'s return type is unchanged). Add `isStale(userId): boolean` (entries older than 5 minutes — matching the room heartbeat cadence's order of magnitude — are stale). Update the four call-site guards (`user-info-modal.component.ts:721`, `ghost-audience.util.ts:50`, `user-action-modal.ts:798`, and the fourth found during implementation via the same grep) from `if (!getUserInfo(uid))` to `if (!getUserInfo(uid) || isStale(uid))`. No backend change.
 
 ## 4. Files touched
 
 **Backend (`jilalibff`):**
-- `src/main/java/com/jilali/room/RoomController.java` — add `/{type}/page-bundle`, `/{type}/search`
-- `src/main/java/com/jilali/room/RoomsPageService.java` — new, mirrors `RoomJoinService`
+- `src/main/java/com/jilali/room/RoomController.java` — add `/{type}/search`
+- `src/main/java/com/jilali/room/TextMatcher.java` — new, pure-logic port of `text-search.util.ts`
 - `src/main/java/com/jilali/room/RoomsSearchService.java` — new
-- `src/main/java/com/jilali/room/dto/RoomsPageBundleResponse.java` — new
 
 **Frontend (`JilaliTalk-angular-frontend`):**
-- `features/rooms/data/rooms-api.ts` — add `fetchPageBundle()`, `searchRooms()`
-- `features/rooms/state/rooms-store.ts`, `live-rooms-store.ts` — collapse 3 resources into 1 bundled resource; swap to `searchRooms()` when searching
-- `features/rooms/data/pagination-search.util.ts` — remove `computeIsAutoSearching` once search moves server-side
-- `features/rooms/data/rooms-model.ts` — `filterRooms()` keeps category/language filtering (still applied client-side to the already-fetched page for instant UI feedback) but drops responsibility for exhaustive text search
-- `core/services/create-room.service.ts`, `core/layout/header.component.ts` — consume the shared categories resource instead of independent fetches
-- `features/room/pages/room-page.ts` — `makeVisible()` parallelizes or simplifies per §3.3
-- `core/services/user-info.service.ts` — add TTL to cache entries
+- `shared/data/categories.service.ts` — new, shared/cached categories fetch
+- `shared/data/categories.ts` — unchanged (already holds the canonical `Category`/`CategoryTopic` types)
+- `features/rooms/data/rooms-model.ts` — delete duplicate `Category`/`CategoryTopic`, re-export from `shared/data/categories`
+- `features/rooms/data/rooms-api.ts` — `fetchCategories()` delegates to `CategoriesService`; add `searchRooms()`
+- `core/services/create-room.service.ts` — `fetchCategories()` delegates to `CategoriesService`
+- `features/rooms/state/rooms-store.ts`, `live-rooms-store.ts` — swap to `searchRooms()` when a debounced query is present, instead of the sequential auto-paginate loop
+- `features/rooms/data/pagination-search.util.ts` — remove `computeIsAutoSearching` once both stores stop using it
+- `features/room/pages/room-page.ts` — `makeVisible()` parallelizes per §3.3
+- `core/services/user-info.service.ts` — add TTL to cache entries; update 4 call sites' staleness guard
 
 ## 5. Testing / verification
 
-- Backend: unit tests for `RoomsPageService`/`RoomsSearchService` mirroring existing `RoomJoinService` tests (mock `JilaliClient`, assert concurrent fork behavior and merged output).
+- Backend: `TextMatcherTest` (plain JUnit5, pure logic, mirrors `JilaliGatewayTest`'s style). `RoomsSearchService`'s own upstream fan-out has no automated test, matching existing precedent — `RoomJoinService` (same `StructuredTaskScope` pattern) has none either, since this project has no mocking framework (no Mockito dependency) to fake `JilaliClient`, an `@Client` HTTP interface.
+- Frontend: `CategoriesService` gets a `HttpTestingController`-based spec (first use of that tool in this repo, but it's the standard Angular-idiomatic way to test an HTTP-calling service — not an invented pattern) asserting a second `fetchCategories()` call while the first is in flight does not trigger a second HTTP request.
 - `npx tsc --noEmit` clean on the frontend.
-- Manual (`/run` or `/verify`): open rooms list, confirm Network tab shows 1 request instead of 3; type a search query for a room on a page not yet loaded, confirm it resolves via 1 request instead of a burst; toggle a minimized room back to visible, confirm no double round-trip in Network tab.
+- Manual (`/run` or `/verify`): open the rooms list then open the create-room modal, confirm the Network tab shows exactly one `/rooms/categories` request for the whole session; type a search query for a room on a page not yet loaded, confirm it resolves via 1 request instead of a burst; toggle a minimized room back to visible, confirm the two requests fire concurrently in the Network tab, not sequentially.
 
 ## 6. Out of scope / deferred (needs a separate decision)
 
