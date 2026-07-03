@@ -3,6 +3,8 @@ package com.jilali.user.dto;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 
+import java.util.List;
+
 /**
  * Clean user info DTO returned to frontend clients.
  * Derived from the encrypted HelloTalk userinfo response.
@@ -27,6 +29,8 @@ public record UserInfo(
     @Nullable String areaCode,
     @Nullable Integer regDays,
     @Nullable String liveStateCname,
+    /** Pre-flattened tag list: all non-null {@code .tag} strings from the 8 upstream tag arrays. */
+    @Nullable List<String> tags,
     @Nullable UserInfoResponse.UserInfoItem details
 ) {
 

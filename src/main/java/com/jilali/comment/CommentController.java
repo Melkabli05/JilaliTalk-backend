@@ -5,7 +5,9 @@ import com.jilali.client.JilaliResponses;
 import com.jilali.comment.dto.BffSendCommentRequest;
 import com.jilali.comment.dto.CaptionHistoryResponse;
 import com.jilali.comment.dto.CaptionSwitchRequest;
-import com.jilali.comment.dto.CommentListResponse;
+import com.jilali.comment.dto.Comment;
+import com.jilali.comment.dto.CommentDto;
+import com.jilali.comment.dto.CommentListDto;
 import com.jilali.comment.dto.SendCommentRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
@@ -53,9 +55,31 @@ public class CommentController {
     // ---- Comments ----
 
     @Get("/comments")
-    public CommentListResponse comments(@QueryValue(defaultValue = "2") int busiType,
+    public CommentListDto comments(@QueryValue(defaultValue = "2") int busiType,
                                         @QueryValue @NotBlank String cname) {
-        return JilaliResponses.unwrap(client.comments(busiType, cname));
+        var upstream = JilaliResponses.unwrap(client.comments(busiType, cname));
+        return new CommentListDto(
+                upstream.items().stream().map(this::toDto).toList(),
+                upstream.hasNext(),
+                upstream.oldestId()
+        );
+    }
+
+    /** Converts an upstream Comment (createdAt/updatedAt in Unix seconds) to CommentDto (milliseconds). */
+    private CommentDto toDto(Comment c) {
+        return new CommentDto(
+                c.id(), c.createdAt() * 1000L, c.updatedAt() * 1000L,
+                c.cname(), c.busiType(), c.userId(), c.nickname(), c.headUrl(),
+                c.nationality(), c.role(), c.vipType(), toMsgDto(c.msg()), c.dayRankLevel(),
+                c.giftLevel(), c.fgLevel(), c.fgName(), c.fgIsActive(), c.bubbleId(),
+                c.bubbleUrl(), c.bubbleColor(), c.hitBad(), c.bubbleAnimalType(),
+                c.bubbleAnimalUrl(), c.vipLogo(), c.vipLogoAnim(), c.expireAt(), c.medalWallIcon()
+        );
+    }
+
+    private CommentDto.Msg toMsgDto(Comment.Msg msg) {
+        if (msg == null) return null;
+        return new CommentDto.Msg(msg.text() == null ? null : new CommentDto.Msg.Text(msg.text().text()));
     }
 
     private static final DateTimeFormatter SEND_TIME_FMT =

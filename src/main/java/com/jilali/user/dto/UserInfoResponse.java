@@ -240,7 +240,21 @@ public record UserInfoResponse(
             item.onlineState() != null ? item.onlineState().areaCode() : null,
             base != null ? base.regDays() : null,
             item.liveState() != null ? item.liveState().cname() : null,
+            flattenTags(item.tags()),
             item
         );
+    }
+
+    /** Flattens the 8 tag arrays into a single list of non-blank tag strings. */
+    private static List<String> flattenTags(TagsInfo tags) {
+        if (tags == null) return List.of();
+        return java.util.stream.Stream.of(
+                tags.hobby(), tags.occupation(), tags.education(), tags.hometown(),
+                tags.travelling(), tags.mbti(), tags.zodiacSign(), tags.bloodType()
+        )
+        .flatMap(List::stream)
+        .map(TagItem::tag)
+        .filter(t -> t != null && !t.isBlank())
+        .toList();
     }
 }

@@ -5,6 +5,8 @@ import com.jilali.client.JilaliGateway;
 import com.jilali.client.JilaliResponses;
 import com.jilali.user.dto.BatchStatusRequest;
 import com.jilali.user.dto.BatchStatusResponse;
+import com.jilali.user.dto.EnrichBatchRequest;
+import com.jilali.user.dto.EnrichBatchResponse;
 import com.jilali.user.dto.HeartbeatRequest;
 import com.jilali.user.dto.HostStatus;
 import com.jilali.user.dto.RoomUserListRequest;
@@ -66,6 +68,25 @@ public class UserController {
     @Post("/status/batch")
     public BatchStatusResponse batchStatus(@Valid @Body BatchStatusRequest request) {
         return JilaliResponses.unwrap(gateway.client().batchUserStatus(request));
+    }
+
+    /**
+     * Batch enrichment for user profiles. Resolves a list of user IDs to their full profiles
+     * in a single call — warm entries (already in the user-info cache) are free; cold entries
+     * pay one encrypted upstream call each.
+     *
+     * <p>This replaces the per-user fetch pattern in AudienceStore.enrichAudienceUser(),
+     * StageStore.enrichStageUser(), and ghost-audience.util.ts where each user_join event
+     * triggered a separate GET /users/info?userId=... call.
+     */
+    @Post("/enrich-batch")
+    public EnrichBatchResponse enrichBatch(@Valid @Body EnrichBatchRequest request) {
+        return new EnrichBatchResponse(
+                request.userIds().stream()
+                        .map(gateway::userInfo)
+                        .filter(u -> u != null)
+                        .toList()
+        );
     }
 
     @Get("/end-page/host")

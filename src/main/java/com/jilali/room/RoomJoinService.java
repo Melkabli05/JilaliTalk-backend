@@ -2,6 +2,9 @@ package com.jilali.room;
 
 import com.jilali.client.JilaliClient;
 import com.jilali.client.JilaliResponses;
+import com.jilali.comment.dto.Comment;
+import com.jilali.comment.dto.CommentDto;
+import com.jilali.comment.dto.CommentListDto;
 import com.jilali.comment.dto.CommentListResponse;
 import com.jilali.core.JilaliProperties;
 import com.jilali.room.dto.JoinBundleResponse;
@@ -77,11 +80,16 @@ public class RoomJoinService {
             // Returns normally only when all four have completed successfully.
             scope.join();
 
+            var upstreamComments = commentsTask.get();
             return new JoinBundleResponse(
                     decryptRtcToken(voiceInfoTask.get()),
                     stageUsersTask.get(),
                     audienceUsersTask.get(),
-                    commentsTask.get()
+                    new CommentListDto(
+                            upstreamComments.items().stream().map(this::toCommentDto).toList(),
+                            upstreamComments.hasNext(),
+                            upstreamComments.oldestId()
+                    )
             );
 
         } catch (InterruptedException e) {
@@ -103,5 +111,22 @@ public class RoomJoinService {
         var encrypted = resp.channelInfo().rtcInfo().token();
         byte[] key = properties.agoraCipherKey().getBytes(StandardCharsets.US_ASCII);
         return resp.withRtcToken(AgoraTokenCipher.decrypt(encrypted, key));
+    }
+
+    /** Converts an upstream Comment (createdAt/updatedAt in Unix seconds) to CommentDto (milliseconds). */
+    private CommentDto toCommentDto(Comment c) {
+        return new CommentDto(
+                c.id(), c.createdAt() * 1000L, c.updatedAt() * 1000L,
+                c.cname(), c.busiType(), c.userId(), c.nickname(), c.headUrl(),
+                c.nationality(), c.role(), c.vipType(), toMsgDto(c.msg()), c.dayRankLevel(),
+                c.giftLevel(), c.fgLevel(), c.fgName(), c.fgIsActive(), c.bubbleId(),
+                c.bubbleUrl(), c.bubbleColor(), c.hitBad(), c.bubbleAnimalType(),
+                c.bubbleAnimalUrl(), c.vipLogo(), c.vipLogoAnim(), c.expireAt(), c.medalWallIcon()
+        );
+    }
+
+    private CommentDto.Msg toMsgDto(Comment.Msg msg) {
+        if (msg == null) return null;
+        return new CommentDto.Msg(msg.text() == null ? null : new CommentDto.Msg.Text(msg.text().text()));
     }
 }
