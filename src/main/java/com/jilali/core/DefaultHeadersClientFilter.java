@@ -112,6 +112,9 @@ public class DefaultHeadersClientFilter implements Ordered {
             ? inboundAuth
             : "Bearer " + properties.defaultAuthToken();
         Long uid = JwtUtil.uidFromBearer(token);
+        log.debug("[jlhub] deriveCallerUid: token-source={}, uid={}",
+            (inboundAuth != null && !inboundAuth.isBlank()) ? "inbound" : "default",
+            uid);
         if (uid == null) {
             log.debug("[jlhub] could not derive x-ht-uid from inbound JWT");
             return null;
