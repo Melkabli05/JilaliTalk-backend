@@ -61,11 +61,11 @@ public class RoomsSearchService {
     }
 
     static boolean matchesQuery(ChannelListItem item, String query) {
-        List<String> haystacks = new ArrayList<>(List.of(
-                item.channel().name(),
-                item.channel().cname(),
-                item.channel().description() == null ? "" : item.channel().description(),
-                item.hostUser().nickname() == null ? "" : item.hostUser().nickname()));
+        List<String> haystacks = new ArrayList<>();
+        haystacks.add(item.channel().name());
+        haystacks.add(item.channel().cname());
+        haystacks.add(item.channel().description());
+        haystacks.add(item.hostUser().nickname());
         if (item.categoryTopicTag() != null) {
             haystacks.add(item.categoryTopicTag().categoryName());
             if (item.categoryTopicTag().topicName() != null) {
