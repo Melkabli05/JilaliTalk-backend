@@ -78,6 +78,9 @@ public class RoomEventSource {
             if (upstream != null) upstream.close();
             Sinks.Many<RoomRealtimeEvent> sink = sinks.remove(cname);
             if (sink != null) sink.tryEmitComplete();
+            // Safe to drop: clients always reset their local revision to -1 on join, so a
+            // revisited room simply starts counting from 0 again instead of leaking forever.
+            audienceRevisions.remove(cname);
         }
     }
 

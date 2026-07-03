@@ -131,8 +131,18 @@ public class RoomController {
     }
 
     /**
-     * Bundled join payload — fans three LiveHub calls (voice room info, stage list, audience
-     * roster) out in parallel server-side so the browser makes one round-trip instead of three.
+     * Bundled join payload — fans four LiveHub calls (room info, stage roster, audience roster,
+     * comment history) out in parallel server-side ({@link RoomJoinService#joinBundle}) so the
+     * browser makes one round-trip instead of four. The Angular frontend's room-join flow
+     * (RoomPageComponent/VideoRoomPageComponent {@code doEnterRoom}), its "refresh room" button
+     * ({@code doRefreshRoomCore}), and its invisible→visible toggle ({@code makeVisible}) all
+     * call this instead of {@code /voice}, {@code /live}, {@code /stage/list},
+     * {@code /users/rooms/list}, and {@code /comments} individually.
+     *
+     * <p>Deliberately <em>not</em> used by the audience-revision reconciliation poll in the
+     * frontend's {@code AudienceStore} — that only needs a roster refresh, so pulling in room
+     * info + stage + comments on every drift-corrected poll would waste three upstream calls
+     * per check. That poll intentionally keeps calling {@code /users/rooms/list} directly.
      */
     @Get("/{cname}/join-bundle")
     public JoinBundleResponse joinBundle(
@@ -143,8 +153,10 @@ public class RoomController {
 
     /**
      * Returns the audience roster revision for a room. Clients poll this to decide whether to
-     * refetch — they only call {@code /api/rooms/{cname}/audience} when revision > their last-known
-     * value, eliminating the fixed 30-second polling that blindly refetches regardless of activity.
+     * refetch — they only call {@code POST /api/users/rooms/list} when revision > their
+     * last-known value, eliminating the fixed 30-second polling that blindly refetches
+     * regardless of activity. See the "Deliberately not used by..." note on {@link #joinBundle}
+     * for why this poll doesn't go through the join-bundle endpoint instead.
      */
     @Get("/{cname}/audience-revision")
     public AudienceRevisionResponse audienceRevision(String cname) {
