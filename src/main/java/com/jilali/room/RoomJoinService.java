@@ -93,6 +93,11 @@ public class RoomJoinService {
             // Sequenced first — see class-level ordering note above.
             voiceInfo = withUpstreamRetry(() -> JilaliResponses.unwrap(
                     busiType == 1 ? client.liveRoomInfo(cname) : client.voiceRoomInfo(cname)));
+        } catch (HttpClientResponseException e) {
+            // Rethrow unwrapped so GlobalErrorHandler.UpstreamTransportExceptionHandler catches
+            // it and logs upstream's actual response body — wrapping in RuntimeException here
+            // would hide that behind a generic 500 with no diagnostic detail.
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Upstream fetch failed during room join", e);
         }
@@ -132,6 +137,12 @@ public class RoomJoinService {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted during concurrent room join fetch", e);
         } catch (StructuredTaskScope.FailedException e) {
+            // Rethrow HttpClientResponseException unwrapped — see the comment on the sequential
+            // voiceInfo catch above for why (GlobalErrorHandler needs the real exception type to
+            // log upstream's response body instead of a silent generic 500).
+            if (e.getCause() instanceof HttpClientResponseException httpEx) {
+                throw httpEx;
+            }
             throw new RuntimeException("Upstream fetch failed during room join", e.getCause());
         }
     }
@@ -148,11 +159,15 @@ public class RoomJoinService {
                 return call.call();
             } catch (HttpClientResponseException e) {
                 boolean serverError = e.getStatus().getCode() >= 500;
+                String upstreamBody = e.getResponse() != null
+                        ? e.getResponse().getBody(String.class).orElse("<empty>")
+                        : "<no response>";
                 if (!serverError || attempt >= MAX_UPSTREAM_ATTEMPTS) {
+                    log.warn("Upstream call failed permanently (status={}): {}", e.getStatus(), upstreamBody);
                     throw e;
                 }
-                log.warn("Upstream call failed (status={}), retrying attempt {}/{}",
-                        e.getStatus(), attempt, MAX_UPSTREAM_ATTEMPTS - 1);
+                log.warn("Upstream call failed (status={}), retrying attempt {}/{}: {}",
+                        e.getStatus(), attempt, MAX_UPSTREAM_ATTEMPTS - 1, upstreamBody);
                 Thread.sleep(UPSTREAM_RETRY_DELAY.toMillis());
             }
         }
