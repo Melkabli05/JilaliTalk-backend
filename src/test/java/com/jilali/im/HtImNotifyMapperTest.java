@@ -127,6 +127,32 @@ class HtImNotifyMapperTest {
     }
 
     @Test
+    void newVoiceVisitorPrefersVisitorIdFieldOverUserId() throws Exception {
+        // Real shape (from live capture): userId is whose profile the event is about,
+        // visitor_id is who actually did the visiting. Here someone else (170553379) visited
+        // our (169335562) profile, so visitor_id should be surfaced as the visitor.
+        var mapperSelfIs169335562 = new HtImNotifyMapper(169335562L);
+        JsonNode root = om.readTree(
+            "{\"userId\":169335562,\"notify_type\":\"new_voice_visitor\",\"visitor_id\":170553379,"
+                + "\"visitor_unread_count\":145,\"source\":\"voice_room\"}");
+        var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class, mapperSelfIs169335562.map(root, HEADER));
+        assertEquals("170553379", e.visitorUserId());
+    }
+
+    @Test
+    void newVoiceVisitorDropsSelfAuthoredVisitEcho() throws Exception {
+        // The exact live capture: our own connected account (169335562) is visitor_id — this
+        // represents US visiting the room host's (170553379) profile (auto-fired by viewing
+        // his voice room, source=voice_room), not someone visiting OUR profile. Must be dropped,
+        // not surfaced as "someone visited your profile".
+        var mapperSelfIs169335562 = new HtImNotifyMapper(169335562L);
+        JsonNode root = om.readTree(
+            "{\"userId\":170553379,\"notify_type\":\"new_voice_visitor\",\"visitor_id\":169335562,"
+                + "\"visitor_unread_count\":145,\"source\":\"voice_room\"}");
+        assertEquals(null, mapperSelfIs169335562.map(root, HEADER));
+    }
+
+    @Test
     void legacyVisitorUidFieldMapsToProfileVisit() throws Exception {
         var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
             map("{\"notify_type\":\"90\",\"visitor_uid\":\"55\"}"));
