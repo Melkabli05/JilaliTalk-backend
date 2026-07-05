@@ -127,6 +127,13 @@ public class RoomJoinService {
 
     private CommentDto.Msg toMsgDto(Comment.Msg msg) {
         if (msg == null) return null;
-        return new CommentDto.Msg(msg.text() == null ? null : new CommentDto.Msg.Text(msg.text().text()));
+        return new CommentDto.Msg(
+                msg.text() == null ? null : new CommentDto.Msg.Text(msg.text().text()),
+                toReplyInfoDto(msg.replyInfo()));
+    }
+
+    private CommentDto.Msg.ReplyInfo toReplyInfoDto(Comment.Msg.ReplyInfo r) {
+        if (r == null) return null;
+        return new CommentDto.Msg.ReplyInfo(r.msgId(), r.fromId(), r.fromNickname(), r.text(), r.msgType());
     }
 }

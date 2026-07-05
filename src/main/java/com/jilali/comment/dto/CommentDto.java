@@ -40,9 +40,20 @@ public record CommentDto(
         @JsonProperty("medal_wall_icon") @Nullable String medalWallIcon) {
 
     @Serdeable
-    public record Msg(@Nullable Text text) {
+    public record Msg(@Nullable Text text, @Nullable ReplyInfo replyInfo) {
         @Serdeable
         public record Text(@Nullable String text) {
+        }
+
+        /** Matches the frontend's Comment['msg']['replyInfo'] shape (room-model.ts) exactly —
+         *  plain camelCase, no @JsonProperty overrides, same as the sibling Text record. */
+        @Serdeable
+        public record ReplyInfo(
+                @Nullable String msgId,
+                long fromId,
+                @Nullable String fromNickname,
+                @Nullable String text,
+                @Nullable String msgType) {
         }
     }
 }

@@ -35,9 +35,22 @@ public record Comment(
         @JsonProperty("medal_wall_icon") @Nullable String medalWallIcon) {
 
     @Serdeable
-    public record Msg(@Nullable Text text) {
+    public record Msg(@Nullable Text text, @JsonProperty("reply_info") @Nullable ReplyInfo replyInfo) {
         @Serdeable
         public record Text(@Nullable String text) {
+        }
+
+        /** Mirrors SendCommentRequest.Msg.ReplyInfo / RoomRealtimeEvent.ReplyInfoEvent — same
+         *  upstream reply-object shape on both the send and realtime-push paths, but this
+         *  record was missing from the REST comment-history read path, so a comment fetched
+         *  via GET /comments (rather than pushed live) silently lost its reply-quote context. */
+        @Serdeable
+        public record ReplyInfo(
+                @JsonProperty("msg_id") @Nullable String msgId,
+                @JsonProperty("from_id") long fromId,
+                @JsonProperty("from_nickname") @Nullable String fromNickname,
+                @Nullable String text,
+                @JsonProperty("msg_type") @Nullable String msgType) {
         }
     }
 }
