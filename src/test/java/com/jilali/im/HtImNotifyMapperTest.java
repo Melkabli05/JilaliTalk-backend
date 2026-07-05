@@ -85,21 +85,45 @@ class HtImNotifyMapperTest {
     }
 
     @Test
-    void newVoiceVisitorMapsToProfileVisit() throws Exception {
+    void newVoiceVisitorPrefersHeaderFromIdOverJsonBodyUserId() throws Exception {
+        // The JSON body's own userId (148459398) reflects the receiving account in real
+        // traffic, not the visitor — the packet header's fromId (999, per the shared HEADER
+        // fixture) is the reliable source, same convention as mapText/mapImage/mapGift/mapIntro.
         var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
             map("{\"msg_type\":\"new_voice_visitor\",\"userId\":\"148459398\"}"));
-        assertEquals("148459398", e.visitorUserId());
+        assertEquals("999", e.visitorUserId());
         assertEquals("", e.nickname());
         assertEquals("", e.headUrl());
     }
 
     @Test
-    void newVoiceVisitorMapsToProfileVisitWithNicknameAndHeadUrl() throws Exception {
+    void newVoiceVisitorWithNicknameAndHeadUrlStillPrefersHeaderFromIdForVisitorId() throws Exception {
         var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
             map("{\"msg_type\":\"new_voice_visitor\",\"userId\":\"148459398\",\"nickname\":\"Jilali\",\"head_url\":\"https://x/a.jpg\"}"));
-        assertEquals("148459398", e.visitorUserId());
+        assertEquals("999", e.visitorUserId());
         assertEquals("Jilali", e.nickname());
         assertEquals("https://x/a.jpg", e.headUrl());
+    }
+
+    @Test
+    void newVoiceVisitorFallsBackToJsonBodyWhenHeaderFromIdIsSelf() throws Exception {
+        // Header fromId is unusable here (0) — should still fall back to the JSON body's userId.
+        var mapperWithZeroFromIdHeader = new HtImNotifyMapper(1L);
+        JsonNode root = om.readTree("{\"msg_type\":\"new_voice_visitor\",\"userId\":\"148459398\"}");
+        Header zeroFromIdHeader = new Header(0xF2, 1, 16386, 0, 0L, 1L, 0);
+        var e = assertInstanceOf(ImRealtimeEvent.ProfileVisit.class,
+            mapperWithZeroFromIdHeader.map(root, zeroFromIdHeader));
+        assertEquals("148459398", e.visitorUserId());
+    }
+
+    @Test
+    void newVoiceVisitorDropsEventWhenBothSourcesResolveToSelf() throws Exception {
+        // Header fromId is self (1) and the JSON body's userId is also self — a nonsensical
+        // "you visited your own profile" push should be dropped, not emitted.
+        var mapperSelfIs1 = new HtImNotifyMapper(1L);
+        JsonNode root = om.readTree("{\"msg_type\":\"new_voice_visitor\",\"userId\":\"1\"}");
+        Header selfFromIdHeader = new Header(0xF2, 1, 16386, 0, 1L, 1L, 0);
+        assertEquals(null, mapperSelfIs1.map(root, selfFromIdHeader));
     }
 
     @Test

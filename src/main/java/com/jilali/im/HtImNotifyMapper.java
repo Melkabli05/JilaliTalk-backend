@@ -25,7 +25,7 @@ final class HtImNotifyMapper {
                 case "image"             -> mapImage(root, h);
                 case "gift"              -> mapGift(root, h);
                 case "introduction"      -> mapIntro(root, h);
-                case "new_voice_visitor" -> mapProfileVisit(root);
+                case "new_voice_visitor" -> mapProfileVisit(root, h);
                 default                  -> null;
             };
         }
@@ -113,9 +113,25 @@ final class HtImNotifyMapper {
         return null;
     }
 
-    private ImRealtimeEvent mapProfileVisit(JsonNode root) {
-        String visitorId = textOr(root, "userId", textOr(root, "user_id", ""));
-        if (visitorId.isEmpty()) return null;
+    /**
+     * The raw {@code new_voice_visitor} payload's own {@code userId}/{@code user_id} field
+     * reflects the receiving account (us), not the actual visitor — confirmed by a live report
+     * of every push showing our own uid as "who visited." Every sibling personal-message
+     * handler above (text/image/gift/introduction) already treats the packet header's
+     * {@code fromId} as the reliable "who actually triggered this" signal, falling back to it
+     * when the JSON body lacks its own {@code from_id}; this was the one handler that never
+     * received the header at all. Reversed here: prefer {@code h.fromId()} whenever it names
+     * someone other than us, since the JSON body's field for this specific push type cannot be
+     * trusted; fall back to the JSON body only if the header is unusable (missing/zero) or
+     * also coincidentally self. If both sources resolve to self, drop the event rather than
+     * emit a nonsensical "you visited your own profile" notification.
+     */
+    private ImRealtimeEvent mapProfileVisit(JsonNode root, Header h) {
+        long headerFromId = h.fromId();
+        String visitorId = (headerFromId > 0 && headerFromId != selfUserId)
+            ? String.valueOf(headerFromId)
+            : textOr(root, "userId", textOr(root, "user_id", ""));
+        if (visitorId.isEmpty() || visitorId.equals(String.valueOf(selfUserId))) return null;
         String nickname = textOr(root, "nickname", textOr(root, "from_nickname", ""));
         String headUrl = textOr(root, "head_url", textOr(root, "headUrl", ""));
         return new ImRealtimeEvent.ProfileVisit(visitorId, nickname, headUrl);
