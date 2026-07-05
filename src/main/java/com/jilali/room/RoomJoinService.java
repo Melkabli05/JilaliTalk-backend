@@ -24,12 +24,16 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.StructuredTaskScope;
 
 /**
- * Bundled join data for a room — fans four upstream LiveHub calls (room info, stage roster,
- * audience roster, comment history) out concurrently using Structured Concurrency on virtual
- * threads (Java 21+ preview, finalized in Java 25). This is what backs the BFF's
- * {@code GET /api/rooms/{cname}/join-bundle} endpoint ({@code RoomController.joinBundle}) — the
- * single call the frontend's room-join flow, "refresh room" button, and invisible→visible
- * toggle all use instead of hitting each of those four endpoints separately.
+ * Bundled join data for a room — fetches LiveHub room info first, then fans the remaining
+ * three upstream calls (stage roster, audience roster, comment history) out concurrently using
+ * Structured Concurrency on virtual threads (Java 21+ preview, finalized in Java 25). This is
+ * what backs the BFF's {@code GET /api/rooms/{cname}/join-bundle} endpoint
+ * ({@code RoomController.joinBundle}) — the single call the frontend's room-join flow,
+ * "refresh room" button, and invisible→visible toggle all use instead of hitting each of those
+ * four endpoints separately.
+ *
+ * <p>Room info is sequenced before, not concurrent with, the other three — see
+ * {@link #joinBundle}'s doc for why.
  *
  * <p>Each {@link StructuredTaskScope#fork} launches a virtual thread that blocks cheaply on I/O.
  * When {@link StructuredTaskScope#join} detects a failure, it automatically cancels the remaining
@@ -47,8 +51,8 @@ public class RoomJoinService {
     // LiveHub's own read endpoints (stage/list, voice_room_info, user/list, comment) for a
     // brief window after creation — upstream returns a bare 500 for that cname until its own
     // indexing catches up. Retrying the *individual* failing call a few times, rather than
-    // the whole four-call bundle, resolves this without re-paying for the calls that already
-    // succeeded. Never retries 4xx (a real "not found" / bad request should fail immediately).
+    // the whole bundle, resolves this without re-paying for the calls that already succeeded.
+    // Never retries 4xx (a real "not found" / bad request should fail immediately).
     private static final int MAX_UPSTREAM_ATTEMPTS = 4;
     private static final Duration UPSTREAM_RETRY_DELAY = Duration.ofMillis(700);
 
@@ -61,22 +65,40 @@ public class RoomJoinService {
     }
 
     /**
-     * Calls LiveHub's room info (voice or live, dispatched by {@code busiType}), stage list,
-     * audience user list, and comment history concurrently.
+     * Calls LiveHub's room info (voice or live, dispatched by {@code busiType}) first and lets
+     * it complete, then fetches stage list, audience user list, and comment history
+     * concurrently.
+     *
+     * <p>Room info is deliberately sequenced <em>before</em>, not concurrent with, the other
+     * three. A captured real-client session shows the same ordering: after {@code user/join},
+     * the app calls {@code voice_room_info}, then — roughly a second later, after several
+     * unrelated calls — {@code stage/list}. When our BFF used to fire all four concurrently,
+     * a room fetched immediately after creation would 500 on {@code stage/list} indefinitely
+     * (observed failing continuously for 13+ seconds with retries, never recovering) — i.e.
+     * not a brief propagation lag that a retry alone can wait out, but upstream appears to
+     * expect {@code voice_room_info} to have already completed for this room/session before
+     * {@code stage/list} et al. will serve it.
      *
      * @param cname    room channel name
      * @param busiType business type (1 = live/video, 2 = voice — see voice-list/live-list route
      *                 dispatch on the frontend) — selects liveRoomInfo vs voiceRoomInfo
      * @return combined payload for a room join
-     * @throws RuntimeException wrapping the upstream failure if any of the four calls errors
+     * @throws RuntimeException wrapping the upstream failure if any call errors
      */
     public JoinBundleResponse joinBundle(String cname, int busiType) {
-        try (var scope = StructuredTaskScope.open()) {
-
+        VoiceRoomInfoResponse voiceInfo;
+        try {
             // Room metadata (voice or live — dispatched by busiType) including the RTC token,
             // needed by the frontend before it can open its websocket / audio connection.
-            var voiceInfoTask = scope.fork(() -> withUpstreamRetry(() -> JilaliResponses.unwrap(
-                    busiType == 1 ? client.liveRoomInfo(cname) : client.voiceRoomInfo(cname))));
+            // Sequenced first — see class-level ordering note above.
+            voiceInfo = withUpstreamRetry(() -> JilaliResponses.unwrap(
+                    busiType == 1 ? client.liveRoomInfo(cname) : client.voiceRoomInfo(cname)));
+        } catch (Exception e) {
+            throw new RuntimeException("Upstream fetch failed during room join", e);
+        }
+
+        try (var scope = StructuredTaskScope.open()) {
+
             // Who's currently on stage.
             var stageUsersTask = scope.fork(() -> withUpstreamRetry(() ->
                     JilaliResponses.unwrap(client.stageList(busiType, cname))));
@@ -91,12 +113,12 @@ public class RoomJoinService {
                     JilaliResponses.unwrap(client.comments(busiType, cname))));
 
             // Throws StructuredTaskScope.FailedException if any subtask fails (others are cancelled).
-            // Returns normally only when all four have completed successfully.
+            // Returns normally only when all three have completed successfully.
             scope.join();
 
             var upstreamComments = commentsTask.get();
             return new JoinBundleResponse(
-                    decryptRtcToken(voiceInfoTask.get()),
+                    decryptRtcToken(voiceInfo),
                     stageUsersTask.get(),
                     audienceUsersTask.get(),
                     new CommentListDto(
