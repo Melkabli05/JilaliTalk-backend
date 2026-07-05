@@ -104,9 +104,13 @@ public class ImEventEnricher {
             .subscribeOn(Schedulers.boundedElastic());
     }
 
+    /** Only skip the enrichment lookup when BOTH fields are already present — a raw push with
+     *  just a nickname (no avatar set) or just an avatar (nickname omitted) still needs the
+     *  lookup to backfill the missing one. This was previously OR, which skipped enrichment
+     *  (and permanently left the other field blank) as soon as either was non-empty. */
     private static boolean isFilled(String nickname, String headUrl) {
         return (nickname != null && !nickname.isBlank())
-            || (headUrl != null && !headUrl.isBlank());
+            && (headUrl != null && !headUrl.isBlank());
     }
 
     private static String firstFilled(String fromEvent, String fromUser) {
