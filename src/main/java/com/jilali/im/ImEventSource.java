@@ -17,6 +17,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * The first browser session to subscribe opens the upstream connection; the last to
  * leave closes it. The IM channel is global (not per-room), so there is at most one
  * upstream connection at any time.
+ *
+ * <p>Events flow: connector -> {@link ImEventEnricher} (fills in missing nickname/avatar
+ * from {@code JilaliGateway.userInfo()}) -> sink. Enrichment runs after the raw mapper so
+ * the frontend never sees a profile_visit event whose only identity field is the raw
+ * numeric visitorUserId.
  */
 @Singleton
 public class ImEventSource {
@@ -28,16 +33,18 @@ public class ImEventSource {
     private final String deviceId;
     private final String deviceModel;
     private final ObjectMapper om;
+    private final ImEventEnricher enricher;
 
     private final AtomicInteger subscriberCount = new AtomicInteger(0);
     private volatile HtImUpstreamConnector connector;
     private volatile Sinks.Many<ImRealtimeEvent> sink;
 
-    public ImEventSource(JilaliProperties properties, ObjectMapper om) {
+    public ImEventSource(JilaliProperties properties, ObjectMapper om, ImEventEnricher enricher) {
         this.jwt         = properties.defaultAuthToken();
         this.deviceId    = properties.deviceId();
         this.deviceModel = properties.deviceModel();
         this.om          = om;
+        this.enricher    = enricher;
         this.userId      = UidExtractor.uidAsLong(jwt, om);
         log.info("ImEventSource: userId={}", userId);
     }
@@ -52,7 +59,17 @@ public class ImEventSource {
             this.connector = upstream;
 
             upstream.attach(
-                event -> newSink.tryEmitNext(event),
+                event -> enricher.enrich(event).subscribe(
+                    newSink::tryEmitNext,
+                    ex -> {
+                        // Enrichment failure is non-fatal: emit the raw event so the notification
+                        // still arrives (even if with the placeholder "Someone") rather than be
+                        // dropped silently.
+                        log.warn("ImEventSource: enrich failed, emitting raw event uid={}: {}",
+                            userId, ex.getMessage());
+                        newSink.tryEmitNext(event);
+                    }
+                ),
                 () -> {
                     log.info("ImEventSource: upstream disconnected");
                     newSink.tryEmitComplete();
