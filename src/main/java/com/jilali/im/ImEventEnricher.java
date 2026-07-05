@@ -33,15 +33,23 @@ public class ImEventEnricher {
         this.gateway = gateway;
     }
 
-    /** Returns the same event with nickname/headUrl filled in where the raw upstream payload omitted them. */
+    /** Returns the same event with nickname/headUrl filled in where the raw upstream payload omitted them.
+     *  Never errors: enrichment failure falls back to emitting the raw event (the frontend's
+     *  "Someone" / no-avatar defaults still produce a usable notification rather than dropping it). */
     public Mono<ImRealtimeEvent> enrich(ImRealtimeEvent event) {
-        return switch (event) {
+        Mono<ImRealtimeEvent> result = switch (event) {
             case ImRealtimeEvent.ProfileVisit pv         -> enrichProfileVisit(pv);
             case ImRealtimeEvent.Follow f                -> enrichFollow(f);
             case ImRealtimeEvent.GiftMessage g           -> enrichGift(g);
             case ImRealtimeEvent.IntroductionMessage i   -> enrichIntroduction(i);
             default                                       -> Mono.just(event);
         };
+        return result.onErrorResume(ex -> {
+            // userInfo() failed (network/cache fault) — better to ship the un-enriched event than
+            // nothing. Frontend's placeholders ("Someone" / no avatar) keep the notification usable.
+            log.warn("ImEventEnricher: enrichment failed for {}: {}", event.getClass().getSimpleName(), ex.getMessage());
+            return Mono.just(event);
+        });
     }
 
     private Mono<ImRealtimeEvent> enrichProfileVisit(ImRealtimeEvent.ProfileVisit pv) {
@@ -88,16 +96,12 @@ public class ImEventEnricher {
     }
 
     /** Caffeine lookups are in-process and non-blocking. Cold misses pay one upstream round-trip —
-     *  bounded-elastic keeps that off the IM I/O thread that called us. */
+     *  bounded-elastic keeps that off the IM I/O thread that called us. Errors propagate up so
+     *  {@link #enrich(ImRealtimeEvent)} can fall back to emitting the raw event rather than
+     *  silently dropping the notification. */
     private Mono<UserInfo> resolveAsync(long userId) {
         return Mono.fromCallable(() -> gateway.userInfo(userId))
-            .subscribeOn(Schedulers.boundedElastic())
-            .onErrorResume(ex -> {
-                // Partial enrichment is acceptable — frontend falls back to "Someone" / no avatar
-                // rather than dropping the notification entirely.
-                log.warn("ImEventEnricher: userInfo({}) failed: {}", userId, ex.getMessage());
-                return Mono.empty();
-            });
+            .subscribeOn(Schedulers.boundedElastic());
     }
 
     private static boolean isFilled(String nickname, String headUrl) {

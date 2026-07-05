@@ -59,17 +59,9 @@ public class ImEventSource {
             this.connector = upstream;
 
             upstream.attach(
-                event -> enricher.enrich(event).subscribe(
-                    newSink::tryEmitNext,
-                    ex -> {
-                        // Enrichment failure is non-fatal: emit the raw event so the notification
-                        // still arrives (even if with the placeholder "Someone") rather than be
-                        // dropped silently.
-                        log.warn("ImEventSource: enrich failed, emitting raw event uid={}: {}",
-                            userId, ex.getMessage());
-                        newSink.tryEmitNext(event);
-                    }
-                ),
+                // ImEventEnricher.enrich() never errors — it falls back to emitting the raw event
+                // on lookup failure, so the wire always sees exactly one event per upstream push.
+                event -> enricher.enrich(event).subscribe(newSink::tryEmitNext),
                 () -> {
                     log.info("ImEventSource: upstream disconnected");
                     newSink.tryEmitComplete();
