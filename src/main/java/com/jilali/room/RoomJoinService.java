@@ -12,12 +12,15 @@ import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.stage.dto.StageListResponse;
 import com.jilali.user.dto.RoomUserListRequest;
 import com.jilali.user.dto.RoomUserListResponse;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.StructuredTaskScope;
 
 /**
@@ -39,6 +42,15 @@ import java.util.concurrent.StructuredTaskScope;
 public class RoomJoinService {
 
     private static final Logger log = LoggerFactory.getLogger(RoomJoinService.class);
+
+    // A room just created via create_voice_channel is occasionally not yet visible to
+    // LiveHub's own read endpoints (stage/list, voice_room_info, user/list, comment) for a
+    // brief window after creation — upstream returns a bare 500 for that cname until its own
+    // indexing catches up. Retrying the *individual* failing call a few times, rather than
+    // the whole four-call bundle, resolves this without re-paying for the calls that already
+    // succeeded. Never retries 4xx (a real "not found" / bad request should fail immediately).
+    private static final int MAX_UPSTREAM_ATTEMPTS = 4;
+    private static final Duration UPSTREAM_RETRY_DELAY = Duration.ofMillis(700);
 
     private final JilaliClient client;
     private final JilaliProperties properties;
@@ -63,18 +75,20 @@ public class RoomJoinService {
 
             // Room metadata (voice or live — dispatched by busiType) including the RTC token,
             // needed by the frontend before it can open its websocket / audio connection.
-            var voiceInfoTask = scope.fork(() -> JilaliResponses.unwrap(
-                    busiType == 1 ? client.liveRoomInfo(cname) : client.voiceRoomInfo(cname)));
+            var voiceInfoTask = scope.fork(() -> withUpstreamRetry(() -> JilaliResponses.unwrap(
+                    busiType == 1 ? client.liveRoomInfo(cname) : client.voiceRoomInfo(cname))));
             // Who's currently on stage.
-            var stageUsersTask = scope.fork(() -> JilaliResponses.unwrap(client.stageList(busiType, cname)));
+            var stageUsersTask = scope.fork(() -> withUpstreamRetry(() ->
+                    JilaliResponses.unwrap(client.stageList(busiType, cname))));
             // The audience roster. get_type=[3] matches RoomApi.fetchAudienceUsers() on the
             // frontend — omitting it (null) would ask upstream for a different, undocumented
             // default roster shape.
-            var audienceUsersTask = scope.fork(() -> JilaliResponses.unwrap(
-                    client.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType))));
+            var audienceUsersTask = scope.fork(() -> withUpstreamRetry(() -> JilaliResponses.unwrap(
+                    client.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType)))));
             // Initial chat/comment history, so the room renders with its comment feed already
             // populated instead of the frontend needing a fifth call after the bundle resolves.
-            var commentsTask = scope.fork(() -> JilaliResponses.unwrap(client.comments(busiType, cname)));
+            var commentsTask = scope.fork(() -> withUpstreamRetry(() ->
+                    JilaliResponses.unwrap(client.comments(busiType, cname))));
 
             // Throws StructuredTaskScope.FailedException if any subtask fails (others are cancelled).
             // Returns normally only when all four have completed successfully.
@@ -97,6 +111,28 @@ public class RoomJoinService {
             throw new RuntimeException("Interrupted during concurrent room join fetch", e);
         } catch (StructuredTaskScope.FailedException e) {
             throw new RuntimeException("Upstream fetch failed during room join", e.getCause());
+        }
+    }
+
+    /**
+     * Retries {@code call} up to {@link #MAX_UPSTREAM_ATTEMPTS} times when upstream returns a
+     * 5xx (see the field doc above for why: a just-created room's own read endpoints can lag
+     * briefly behind {@code create_voice_channel}). A 4xx is never retried — that is a real
+     * error (bad request, room genuinely not found) that more attempts cannot fix.
+     */
+    private <T> T withUpstreamRetry(Callable<T> call) throws Exception {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return call.call();
+            } catch (HttpClientResponseException e) {
+                boolean serverError = e.getStatus().getCode() >= 500;
+                if (!serverError || attempt >= MAX_UPSTREAM_ATTEMPTS) {
+                    throw e;
+                }
+                log.warn("Upstream call failed (status={}), retrying attempt {}/{}",
+                        e.getStatus(), attempt, MAX_UPSTREAM_ATTEMPTS - 1);
+                Thread.sleep(UPSTREAM_RETRY_DELAY.toMillis());
+            }
         }
     }
 
