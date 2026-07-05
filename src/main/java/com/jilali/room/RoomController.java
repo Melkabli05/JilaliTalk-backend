@@ -20,7 +20,6 @@ import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.user.dto.RoomUserListRequest;
 import io.micronaut.cache.annotation.Cacheable;
-import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.annotation.Body;
@@ -243,11 +242,15 @@ public class RoomController {
     }
 
     @Get("/active")
-    @Nullable
-    public Map<String, Object> userStartedChannel(@QueryValue(defaultValue = "2") int busiType) {
-        // null body when user has no active channel — pass through
+    public HttpResponse<Map<String, Object>> userStartedChannel(@QueryValue(defaultValue = "2") int busiType) {
+        // A bare `null` return from a Micronaut controller method is treated as "no route
+        // matched" and produces a 404, not a 200 with an empty body — even with @Nullable on
+        // the return type, which is only a compile-time hint. "User has no active channel" is
+        // the common, expected case (anyone about to create their first room hits this), so it
+        // must be an explicit 200 with a null body, wrapped via HttpResponse.ok(), not a bare
+        // return null.
         var resp = client.userStartedChannel(busiType);
-        return resp == null ? null : resp.data();
+        return HttpResponse.ok(resp == null ? null : resp.data());
     }
 
     @Get("/latest-settings")
