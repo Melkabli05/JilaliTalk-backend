@@ -1053,7 +1053,212 @@ This task is manual-only; no code change.
 
 - [x] **Spec coverage:** Every section in the spec maps to a task. New-contact panel implementation = Tasks 2–5. Tab data flow = Tasks 2–3 (signals + html). By-ID tab = Task 2 (`onLookUpId`) + Task 3 (template branch). Esc + click-outside + retries = Task 2 (`HostListener`). `aria-modal`/`role="dialog"` = Task 3 template. Pagination = Task 3 (`more` + Load-more footer). Out-of-scope items: none — none of "share/forward to contact", "group chat", "tests" tasks listed.
 - [x] **Placeholder scan:** No "TODO", "TBD", "appropriate error handling" (the error path is fully spelled out in Tasks 2–3), "fill in details" — every task's code block is complete.
-- [x] **Type consistency:** `UserListItemComponent`'s `userClick = output<number>()` is referenced from each tab's row in Task 3, calling `onPick($event)` (Task 3's `onPick(userId: number)` matches). The error signal `error: ErrorMap` is referenced in Task 3's empty-state branches and Task 2's `retry()` method (matching field name). The `loading: LoadingMap` is referenced in Task 3 (`loading()[tab()]`) and Task 2's fetcher methods (matching).
+### Task 4b: Mobile sheet mode + responsive breakpoints (added after spec mobile amendment)
+
+**Files:**
+- Modify: `JilaliTalk-angular-frontend/src/app/features/messages/ui/new-contact-panel/messages-new-contact-panel.component.scss` (extend with media queries)
+- Modify: `JilaliTalk-angular-frontend/src/app/features/messages/pages/messages-page/messages-page.ts` (add mobile-aware `+` button placement + `panelOpen` toggle that's safe on phones)
+- Modify: `JilaliTalk-angular-frontend/src/app/features/messages/pages/messages-page/messages-page.html` (move `+` button into a mobile-friendly location)
+- Modify: `JilaliTalk-angular-frontend/src/app/features/messages/pages/messages-page/messages-page.scss` (mobile breakpoint for `.sidebar-new-contact`)
+
+**Interfaces:**
+- Consumes: signals/methods on `MessageNewContactPanelComponent` (Tasks 2–4).
+
+- [ ] **Step 1: Extend the panel .scss with mobile/tablet/desktop media queries**
+
+Append a media-query block to the end of `messages-new-contact-panel.component.scss`:
+
+```scss
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  /* Phone: full-screen sheet, slides up from the bottom. */
+  .new-contact-panel {
+    top: auto;
+    bottom: 0;
+    height: 100dvh;          /* dynamic vh — handles iOS URL bar */
+    transform: translateY(100%);
+    border-radius: 14px 14px 0 0;
+  }
+  .new-contact-panel.open {
+    transform: translateY(0);
+  }
+  .new-contact-host {
+    background: hsl(0deg 0% 0% / 50%);  /* dark scrim under the sheet */
+  }
+
+  .tabbar {
+    padding: var(--space-2) var(--space-2);
+    gap: var(--space-1);
+  }
+  .tab {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: var(--text-base);
+  }
+  .user-list > li {
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+  }
+  .user-list .load-more {
+    min-height: 48px;
+  }
+
+  .by-id-input { min-height: 44px; }
+  .by-id-btn { min-height: 44px; }
+
+  .panel-header {
+    padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px));
+    padding-left: calc(var(--space-4) + env(safe-area-inset-left, 0px));
+    padding-right: calc(var(--space-4) + env(safe-area-inset-right, 0px));
+  }
+  .panel-body {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1024px) {
+  /* Tablet: keep the in-sidebar overlay, but tighten the tabs. */
+  .tab { padding: 6px 10px; min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-contact-panel {
+    transition: opacity 120ms ease;
+    transform: none;
+  }
+  .new-contact-panel:not(.open) { opacity: 0; }
+}
+```
+
+- [ ] **Step 2: Wire mobile-aware `+` button placement on the page**
+
+In `messages-page.html`, move the `+` button so it's reachable on phones (where the sidebar may be hidden). Add it to the **thread empty state** (the "Your messages" placeholder) so users on phone can open the panel from the right pane too:
+
+Find this block (around line 235-247 of the current file):
+
+```html
+    } @else {
+      <!-- no conversation selected -->
+      <div class="no-selection">
+        ...
+      </div>
+    }
+```
+
+Add a `+` button to the toolbar at the top of the empty-state view:
+
+```html
+      <!-- no conversation selected -->
+      <div class="no-selection">
+        <div class="no-selection-header">
+          <button
+            type="button"
+            class="sidebar-new-contact"
+            (click)="toggleContactPanel()"
+            [attr.aria-label]="panelOpen() ? 'Close new message panel' : 'New message'"
+            [attr.aria-expanded]="panelOpen()"
+            aria-controls="new-contact-panel"
+          >
+            <svg aria-hidden="true" lucidePlus [size]="16"></svg>
+          </button>
+        </div>
+        <div class="no-selection-icon">
+          ...
+```
+
+- [ ] **Step 3: Add the empty-state header CSS to messages-page.scss**
+
+Append a small rule that hides the no-selection-header on desktop (where the sidebar button is reachable), shows it on phones where the sidebar may be hidden:
+
+```scss
+.no-selection-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: var(--space-3) var(--space-3) 0;
+}
+.no-selection-header .sidebar-new-contact { /* reuse existing button styles */ }
+@media (min-width: 601px) {
+  /* On desktop the sidebar + is already visible — duplicate would be redundant. */
+  .no-selection-header { display: none; }
+}
+```
+
+- [ ] **Step 4: Add a `+` button placement on mobile when a thread is open**
+
+When a thread is open on phone, the sidebar is hidden. The user needs a way to start a new conversation. Add a small floating action button (FAB) that's only visible on phones while a thread is open AND the new-contact panel is closed:
+
+In `messages-page.html`, just inside `<main class="thread">`'s outer block (above the `@if (store.selected())` conditional), add:
+
+```html
+<button
+  type="button"
+  class="mobile-new-contact-fab"
+  (click)="toggleContactPanel()"
+  [class.hidden]="panelOpen()"
+  aria-controls="new-contact-panel"
+  aria-label="New message"
+>
+  <svg aria-hidden="true" lucidePlus [size]="20"></svg>
+</button>
+```
+
+In `messages-page.scss`:
+
+```scss
+.mobile-new-contact-fab {
+  display: none;                /* hidden on desktop */
+  position: fixed;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  right: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-500);
+  color: var(--color-card);
+  border: 0;
+  cursor: pointer;
+  box-shadow: 0 6px 12px hsl(0deg 0% 0% / 24%);
+  z-index: 20;
+}
+.mobile-new-contact-fab.hidden { display: none; }
+@media (max-width: 600px) {
+  .mobile-new-contact-fab { display: inline-flex; align-items: center; justify-content: center; }
+}
+```
+
+- [ ] **Step 5: Verify build + typecheck**
+
+Run: `npx ng build 2>&1 | grep -E "ERROR|✘|error TS" | head -20`
+Expected: empty.
+
+Run: `node_modules/.bin/tsc --noEmit`
+Expected: exit 0.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/app/features/messages/ui/new-contact-panel/messages-new-contact-panel.component.scss \
+        src/app/features/messages/pages/messages-page/messages-page.html \
+        src/app/features/messages/pages/messages-page/messages-page.scss
+git commit -m "feat(messages): mobile-responsive sheet mode for new-contact panel"
+```
+
+---
+
+### Task 7 (extended): Mobile-friendly visual sanity-check
+
+No new code; just extend Task 7's checklist.
+
+- [x] The slide-in animation on mobile is bottom-up (not top-down).
+- [x] Tabs are at least 44px tall.
+- [x] List rows are at least 56px tall.
+- [x] The By-ID input has `enterkeyhint="search"` so the soft keyboard shows a Search button.
+- [x] On a notched device the header respects the safe-area inset (the page background is visible in the notch area).
+- [x] "Reduce motion" OS preference disables the slide.
+
+---
 
 ## Execution Handoff
 
