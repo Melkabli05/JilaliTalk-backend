@@ -12,6 +12,10 @@ import io.micronaut.serde.annotation.Serdeable;
  * {@code endpots/organized_captures_new/livehub_user_status_*.jsonl}. {@code roomId} is
  * always empty in every capture — {@code cname} is the real room identifier — but it's kept
  * since upstream still sends the key.
+ * <p>
+ * {@code hostId} is boxed ({@code Long}, not {@code long}) so a hypothetical upstream
+ * null/missing doesn't fail the whole endpoint — captures always carry it, but the BFF is
+ * the boundary that has to absorb upstream schema drift.
  */
 @Serdeable
 public record UserStatus(
@@ -19,7 +23,7 @@ public record UserStatus(
         @JsonProperty("user_id") long userId,
         @JsonProperty("room_id") @Nullable String roomId,
         @JsonProperty("room_name") @Nullable String roomName,
-        @JsonProperty("host_id") long hostId,
+        @JsonProperty("host_id") @Nullable Long hostId,
         @JsonProperty("host_name") @Nullable String hostName,
         @JsonProperty("host_nationality") @Nullable String hostNationality,
         @Nullable String cname,
