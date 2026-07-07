@@ -152,8 +152,14 @@ public class RoomJoinService {
      * 5xx (see the field doc above for why: a just-created room's own read endpoints can lag
      * briefly behind {@code create_voice_channel}). A 4xx is never retried — that is a real
      * error (bad request, room genuinely not found) that more attempts cannot fix.
+     * <p>
+     * Package-private (not {@code private}) because {@code RoomController.voiceRoomInfo} and
+     * {@code liveRoomInfo} also need this same protection: the frontend's create-room flow hits
+     * those single-call endpoints directly via {@code fresh=true}, and they were previously a
+     * bare {@code JilaliResponses.unwrap} with no retry — so a fresh-room 5xx on the single
+     * voice/live call would surface as a hard 500 and bounce the user to "Room not found".
      */
-    private <T> T withUpstreamRetry(Callable<T> call) throws Exception {
+    <T> T withUpstreamRetry(Callable<T> call) throws Exception {
         for (int attempt = 1; ; attempt++) {
             try {
                 return call.call();

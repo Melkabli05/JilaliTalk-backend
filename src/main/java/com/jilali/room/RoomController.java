@@ -134,12 +134,24 @@ public class RoomController {
 
     @Get("/voice/{cname}")
     public VoiceRoomInfoResponse voiceRoomInfo(String cname) {
-        return decryptRtcToken(JilaliResponses.unwrap(client.voiceRoomInfo(cname)));
+        // Same retry the joinBundle path applies — a fresh-room 5xx on upstream's
+        // voice_room_info is recoverable with a short wait, not a fatal "Room not found".
+        // The frontend's create-room flow hits this single-call endpoint directly via
+        // fresh=true (see RoomPageComponent / VideoRoomPageComponent), so without this
+        // protection a freshly created room's first viewport load 500s and bounces the
+        // user back to home with a wrong "please create a new one" message.
+        var info = roomJoinService.withUpstreamRetry(() ->
+                JilaliResponses.unwrap(client.voiceRoomInfo(cname)));
+        return decryptRtcToken(info);
     }
 
     @Get("/live/{cname}")
     public VoiceRoomInfoResponse liveRoomInfo(String cname) {
-        return decryptRtcToken(JilaliResponses.unwrap(client.liveRoomInfo(cname)));
+        // Same retry note as voiceRoomInfo above (this is the fresh-room counterpart
+        // for the live/video room page).
+        var info = roomJoinService.withUpstreamRetry(() ->
+                JilaliResponses.unwrap(client.liveRoomInfo(cname)));
+        return decryptRtcToken(info);
     }
 
     /**
