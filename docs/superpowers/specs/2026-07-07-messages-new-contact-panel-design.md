@@ -54,8 +54,7 @@ And the Angular `ProfileApi` already has `followers()` / `following()` / `visito
 
 - `MessageNewContactPanelComponent` (NEW, `OnPush`, dumb): owns the overlay. Inputs `open`, outputs `closed` and `picked`.
 - `MessagesPageComponent` (existing): owns the `+` button. Holds the `panelOpen` signal and a `onContactPicked(userId)` handler that calls `store.select(userId)` and clears the panel.
-- `ProfileApi` (existing, reused as-is): `followers()`, `following()`, `visitors()` already exist.
-- A small `userInfo(userId)` lookup is added by either (a) injecting the existing `UserController` infrastructure via `HttpClient` direct call, or (b) extending `ProfileApi.userInfo()` if the latter doesn't exist — to confirm during implementation and pick whichever is shorter.
+- `ProfileApi` (existing, reused as-is): `followers()`, `following()`, `visitors()` already exist. If `userInfo()` doesn't exist on `ProfileApi`, extend it with the small `GET /api/users/info?userId=N` call; if it does, reuse it. (The existing `UserController.userInfo(userId)` is a separate file outside `profile`, so the cleaner path is to extend `ProfileApi.userInfo()`.)
 
 No new service is created if the existing `ProfileApi` already exposes all four methods (likely true after `userInfo()` is added).
 
@@ -175,7 +174,7 @@ export class MessageNewContactPanelComponent {
 ## Edge cases
 
 - **Self**: upstream never returns the caller in their own follower/following lists — no filter needed.
-- **Already have a conversation**: `MessagesStore.select(userId)` activates the row in the list without creating a duplicate. The picked user is already mapped in `_convMap` if a DM has been received previously.
+- **Already have a conversation**: `MessagesStore.select(userId)` activates the row in the list without creating a duplicate. The picked user is already mapped in `_convMap` if a DM has been received previously. If no row exists yet (no prior DM with this peer), the composer still renders an empty thread, the user types a message, `onSend()` calls `store.pushPublic(...)` which creates the row at first send. So the conversation only appears in the sidebar after the first outbound DM — accepted behavior to match the iOS app's "untouched conversations don't show in the list" pattern.
 - **Tab switch spam**: every effect re-load runs `switchMap`-style cancellation so only the latest tab's response is accepted.
 - **By-ID with no user**: BFF returns null or 404; render "User not found" inline below the input.
 - **Click-outside**: a host-level `(click)` listener scoped to the panel container checks `$event.target` against the panel element; click outside emits `closed`.
