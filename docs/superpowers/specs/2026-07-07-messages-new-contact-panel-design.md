@@ -72,6 +72,8 @@ All state is component-local. No store/services beyond `ProfileApi`.
 
 ## Visual layout
 
+### Desktop / tablet
+
 ```
 ┌─────────────────── sidebar ────────────────────┐
 │  Messages                       [conn-dot] [+] │   <- header with new + button
@@ -97,6 +99,47 @@ All state is component-local. No store/services beyond `ProfileApi`.
 ```
 
 The right pane (thread + composer) stays interactive; only the sidebar is grayed. Picking from the list, click-outside, or `×` closes the overlay.
+
+### Mobile (≤600px)
+
+On phones the panel is **not** an in-sidebar overlay — the existing `.shell` already collapses the sidebar to a hidden layer when a conversation is selected, and the sidebar's width on a 360px phone has no room for tabs + a list. Instead the panel becomes a **full-height sheet**:
+
+```
+┌────── full-screen sheet ──────┐
+│  New message            [×]   │   <- header, 56px, fixed
+├───────────────────────────────┤
+│  Following | Followers | …    │   <- tab bar, sticky under header
+├───────────────────────────────┤
+│                               │
+│   ⊙ Mohammed                  │
+│   ⊙ someone2                   │   <- list, scrolls
+│   ⊙ someone3                   │
+│   …                            │
+│       [Load more]              │
+│                               │
+└───────────────────────────────┘
+```
+
+Behavior on mobile:
+- The existing `.sidebar` is hidden (it already does this via `[class.hidden]="store.selected()"`-equivalent CSS at small viewports) — we don't fight that. The new `+` button lives in the thread-pane empty-state toolbar so it's reachable even when only the thread is visible. When the user is in a thread and opens the panel, the thread temporarily hides to make room.
+- The sheet covers the full viewport (top = 0, bottom = 0, left = 0, right = 0 — true full-screen).
+- A darkened scrim is unnecessary because there's no app chrome behind it.
+- Backdrop-close behavior: click outside is impossible (full-screen); instead a Cancel button at the top-left of the sheet header surfaces the close action alongside the existing `×`.
+- Tab bar uses **larger touch targets** on mobile: each tab is `min-height: 44px` per Apple HIG and Material guidelines.
+- List rows are `min-height: 56px` for finger-friendly taps.
+- The "By ID" input is `inputmode="numeric"` with `enterkeyhint="search"` so the keyboard's Search button does the lookup.
+- Pull-down-to-close: a `pointerdown`+ `pointermove` handler on the sheet header that's >100px drag-down closes the panel. (Skip if it's not testable in time — closing-via-button is the supported path.)
+
+### Common rules
+
+- **Touch targets**: every interactive control — close button, each tab, each list row, "Load more", "Look up" — is at least `44px × 44px`. CSS `min-height` enforces this.
+- **Font sizes**: panel title `var(--text-base)`; tab labels `var(--text-sm)`; list-row names inherit the existing `UserListItemComponent` sizing — do not downsize for mobile.
+- **Safe area**: on iOS notched devices, the sheet's bottom padding respects `env(safe-area-inset-bottom)`, and the header respects `env(safe-area-inset-top)`.
+- **Animation**: same `transform + opacity` 180ms ease used for the desktop overlay. On mobile the sheet slides up from the bottom (`translateY(100%) → none`) instead of sliding down from the top.
+- **Reduced motion**: `@media (prefers-reduced-motion: reduce)` disables the slide animation and uses opacity-only.
+- **Orientation change**: the panel re-computes its layout (CSS `flex-basis`) on viewport resize without re-fetching.
+
+The right pane (thread + composer) stays interactive on desktop/tablet; on mobile the thread temporarily hides behind the sheet.
 
 ## Data flow on open
 
@@ -188,9 +231,10 @@ export class MessageNewContactPanelComponent {
 
 - The panel wrapper: `role="dialog"`, `aria-modal="true"`, `aria-label="New message"`.
 - Tab bar: `role="tablist"`. Each tab: `role="tab"`, `aria-selected`. Lists under tabs: `role="tabpanel"` with `aria-labelledby` pointing to the active tab.
-- By-ID input: `<input type="number" inputmode="numeric">` with `aria-describedby` linking to the inline error or "Look up" button.
+- By-ID input: `<input type="number" inputmode="numeric">` with `aria-describedby` linking to the inline error or "Look up" button. On mobile the keyboard's "Search" action (Enter key) submits the lookup (`enterkeyhint="search"`).
 - Focus management: on open, focus moves to the first tab. On `Esc` or close, focus returns to the `+` button.
 - Keyboard navigation: arrow keys inside the tab bar cycle tabs; `Tab` inside the list cycles rows; `Enter` on a row emits `picked(userId)`.
+- Touch targets: every control is at least `44×44px` per WCAG 2.5.5 / Apple HIG.
 
 ## Implementation plan (Phase 4)
 
