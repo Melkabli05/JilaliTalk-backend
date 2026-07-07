@@ -95,4 +95,16 @@ public class ImEventSource {
         }
     }
 
+    /**
+     * Hand a pre-built packet to the live connector for upstream delivery. Used by IM HTTP endpoints
+     * (read-receipt / typing / private-message send) to emit through the same WS, sharing the
+     * SequentialSender and the 30-second heartbeat of the IM channel. No-op when the WS is not
+     * currently connected (caller doesn't get an exception — typical "send during reconnect window"
+     * pattern, retries come from upstream).
+     */
+    public void sendOutbound(byte[] data) {
+        HtImUpstreamConnector c = connector;
+        if (c != null) c.sendOutbound(data);
+    }
+
 }

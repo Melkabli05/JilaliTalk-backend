@@ -342,6 +342,16 @@ class HtImUpstreamConnector implements AutoCloseable {
     }
 
     private void sendBinary(byte[] data) {
+        sendOutbound(data);
+    }
+
+    /**
+     * Send a pre-built packet upstream through the existing IM WS, honoring the {@link SequentialSender}
+     * (so partial writes don't interleave) and silently dropping when the socket isn't connected
+     * (so a 1:1 send during a transient reconnect window doesn't error the HTTP caller — they'll
+     * catch the issue on the next retry or via the upstream's own echo).
+     */
+    void sendOutbound(byte[] data) {
         WebSocket sock = this.ws;
         if (sock == null || !connected) return;
         ByteBuffer buf = ByteBuffer.wrap(data);

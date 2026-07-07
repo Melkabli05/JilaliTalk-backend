@@ -24,8 +24,10 @@ final class HtImPacketFramer {
     static final int CMD_HEARTBEAT        = 0x9001; // 36865 — ping
     static final int CMD_PONG             = 0x9002; // 36866 — server heartbeat response
     static final int CMD_TYPING           = 16407;  // 0x4017 — typing push
+    static final int CMD_PRIVATE_MSG      = 16385;  // 0x4001 — 1:1 private text/image/introduction/gift/voice_room/live_link message sender
+    static final int CMD_READ_RECEIPT     = 16405;  // 0x4015 — read-receipt sender (also reused for offline-page sync — see CMD_OFFLINE_SYNC_PAGE)
     static final int CMD_OFFLINE_SYNC      = 29967; // 0x750F — request offline DMs (group msgs)
-    static final int CMD_OFFLINE_SYNC_PAGE = 16453; // 0x4015 — paginate / request DM offline msgs
+    static final int CMD_OFFLINE_SYNC_PAGE = 16453; // 0x4015 — paginate / request DM offline msgs (note: same opcode as CMD_READ_RECEIPT; upstream packet body disambiguates)
     static final int CMD_OFFLINE_RESPONSE  = 16454; // 0x4016 — offline DM response
     static final int CMD_GROUP_RESPONSE    = 29968; // 0x7510 — group/room message sync response
 
@@ -44,6 +46,15 @@ final class HtImPacketFramer {
 
     /** Same as {@link #buildPacket(long, int, byte[])} but with a custom flag byte (e.g. 0xF2). */
     static byte[] buildPacket(long userId, int commandId, int flag, byte[] payload) {
+        return buildPacket(userId, 0L, commandId, flag, payload);
+    }
+
+    /**
+     * Full-control packet builder: writes the recipient uid into the header's bytes 12-15.
+     * Required for DM-direction packets (read-receipt, typing-indicator, private message) where
+     * the upstream needs the peer uid to route the packet back to its rightful reader.
+     */
+    static byte[] buildPacket(long userId, long toId, int commandId, int flag, byte[] payload) {
         ByteBuffer buf = ByteBuffer.allocate(HEADER_LEN + payload.length)
             .order(ByteOrder.LITTLE_ENDIAN);
         buf.put((byte) (flag & 0xFF));
@@ -53,7 +64,7 @@ final class HtImPacketFramer {
         buf.putShort((short) commandId);
         buf.putShort((short) nextSeq());
         buf.putInt((int) userId);
-        buf.putInt(0);             // toId
+        buf.putInt((int) toId);
         buf.putInt(payload.length);
         buf.put(payload);
         return buf.array();
@@ -85,6 +96,49 @@ final class HtImPacketFramer {
         body.putInt((int) userId);
         body.putLong(System.currentTimeMillis());
         return buildPacket(userId, CMD_HEARTBEAT, body.array());
+    }
+
+    /**
+     * Build a read-receipt packet. {@code toId} is the *peer* user we are confirming we've read
+     * {@code msgId} from — the recipient the upstream server then fan-outs back to.
+     * Body is {@code [0x25][0x00][msgId utf-8 bytes][NUL-padding up to 36 bytes]} = 38 bytes,
+     * matching the layout the legacy frontend's {@code sendReadReceipt} produced (see
+     * {@code decodeOfflinePacket}'s {@code 0x25} branch for the upstream mirror).
+     */
+    static byte[] buildReadReceipt(long fromId, long toId, String msgId) {
+        byte[] msgIdBytes = msgId.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] body = new byte[2 + 36];
+        body[0] = 0x25;
+        body[1] = 0x00;
+        int copyLen = Math.min(msgIdBytes.length, 36);
+        System.arraycopy(msgIdBytes, 0, body, 2, copyLen);
+        // remaining bytes are 0 (NUL) by default — the upstream decoder strips trailing NULs.
+        return buildPacket(fromId, toId, CMD_READ_RECEIPT, 0xF0, body);
+    }
+
+    /**
+     * Build a typing-indicator packet. Body is {@code [fromId u32 LE][isTyping u16 LE]} = 6 bytes,
+     * matching {@code sendTypingIndicator}. {@code fromId} goes in both the header and the body
+     * (per spec).
+     */
+    static byte[] buildTypingIndicator(long fromId, long toId, boolean isTyping) {
+        ByteBuffer body = ByteBuffer.allocate(6).order(ByteOrder.LITTLE_ENDIAN);
+        body.putInt((int) fromId);
+        body.putShort((short) (isTyping ? 0x0001 : 0x0000));
+        return buildPacket(fromId, toId, CMD_TYPING, 0xF0, body.array());
+    }
+
+    /**
+     * Build a 1:1 private-message packet. The legacy frontend's {@code sendTextMessage} used this
+     * path for every outbound content type (text/image/introduction/gift/voice_room/live_link)
+     * with cmdId {@value #CMD_PRIVATE_MSG}; the body is the zlib-deflated {@code jsonBody} —
+     * the upstream server expects deflated JSON, not a typed object, on this opcode.
+     * {@code compress=false} is supported for tests/diagnostics only — do not flip it on the
+     * happy path.
+     */
+    static byte[] buildPrivateMessagePacket(long fromId, long toId, byte[] jsonBody, boolean compress) {
+        byte[] payload = compress ? deflate(jsonBody) : jsonBody;
+        return buildPacket(fromId, toId, CMD_PRIVATE_MSG, 0xF0, payload);
     }
 
     /** Zlib-deflate a byte array (produces data starting with 0x78). */
