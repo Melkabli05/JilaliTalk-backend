@@ -50,9 +50,9 @@ public sealed interface ImRealtimeEvent permits
 
     record ConnectionState(String state) implements ImRealtimeEvent {}
 
-    record TextMessage(String fromUserId, String text, long ts) implements ImRealtimeEvent {}
+    record TextMessage(String fromUserId, String fromNickname, String fromHeadUrl, String text, long ts) implements ImRealtimeEvent {}
 
-    record ImageMessage(String fromUserId, String imageUrl, long ts) implements ImRealtimeEvent {}
+    record ImageMessage(String fromUserId, String fromNickname, String fromHeadUrl, String imageUrl, long ts) implements ImRealtimeEvent {}
 
     record GiftMessage(String fromUserId, String fromNickname, String fromHeadUrl, long giftId, int count) implements ImRealtimeEvent {}
 

@@ -35,18 +35,22 @@ final class HtImNotifyMapper {
 
     private ImRealtimeEvent mapText(JsonNode root, Header h) {
         String fromId = textOr(root, "from_id", String.valueOf(h.fromId()));
+        String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
+        String fromHeadUrl = root.path("from_head_url").isNull() ? null : textOr(root, "from_head_url", null);
         JsonNode t = root.path("text");
         String text = t.isObject() ? textOr(t, "text", "") : t.asText("");
         long ts = root.path("ts").asLong(System.currentTimeMillis());
-        return new ImRealtimeEvent.TextMessage(fromId, text, ts);
+        return new ImRealtimeEvent.TextMessage(fromId, fromNickname, fromHeadUrl, text, ts);
     }
 
     private ImRealtimeEvent mapImage(JsonNode root, Header h) {
         String fromId = textOr(root, "from_id", String.valueOf(h.fromId()));
+        String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
+        String fromHeadUrl = root.path("from_head_url").isNull() ? null : textOr(root, "from_head_url", null);
         String url = root.path("image").path("url").asText("");
         if (url.isBlank()) url = textOr(root, "image_url", "");
         long ts = root.path("ts").asLong(System.currentTimeMillis());
-        return new ImRealtimeEvent.ImageMessage(fromId, url, ts);
+        return new ImRealtimeEvent.ImageMessage(fromId, fromNickname, fromHeadUrl, url, ts);
     }
 
     private ImRealtimeEvent mapGift(JsonNode root, Header h) {
