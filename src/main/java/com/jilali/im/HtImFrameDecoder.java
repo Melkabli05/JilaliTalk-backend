@@ -147,6 +147,99 @@ final class HtImFrameDecoder {
         }
     }
 
+    /**
+     * Parses the upstream MSG-ACK body the server emits as cmdId 16386 on a 0xF2 packet —
+     * the receipt confirming it accepted an outbound DM we sent via {@code CMD_PRIVATE_MSG
+     * = 16385}. Body layout (matches connectwebsock.js's {@code decodeCmd16386}):
+     * <pre>
+     *   [u16 strLen][strVal UTF-8][u64 LE sequence][prefix byte]
+     * </pre>
+     * where {@code strVal} is typically a UUID msgId, {@code prefix} is non-zero for a normal
+     * ACK, and a ≤16-byte body indicates an empty/failure ACK. The body is normally raw
+     * bytes — but historic captures have seen it zlib-compressed, so {@code inflate} first.
+     *
+     * <p>On any parse failure (and on the empty/failure-ACK path) returns a record with
+     * empty msgId + sequence 0 so the caller can still emit an event and the UI can render
+     * "✓ sent" vs "✓ delivered" with the prefix byte as the discriminator.
+     */
+    Optional<MessageAckView> decodeMsgAck(byte[] payload) {
+        if (payload == null || payload.length == 0) return Optional.empty();
+
+        // Try a zlib-inflate first — captures have shown MSG-ACK bodies sometimes
+        // zlib-compressed (leading 0x78). Fall through to raw if not.
+        byte[] raw = payload;
+        if ((payload[0] & 0xFF) == 0x78) {
+            byte[] inflated = HtImPacketFramer.inflate(payload);
+            if (inflated != null) raw = inflated;
+        }
+
+        // Empty/failure ACK — short body (≤16 bytes by legacy convention).
+        if (raw.length <= 16) {
+            return Optional.of(new MessageAckView("", 0L, 0));
+        }
+
+        // Path 1: strict sequential layout. Try BE strLen first, fall back to LE.
+        try {
+            java.nio.ByteBuffer buf = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            int lenBE = buf.getShort(0) & 0xFFFF;
+            int lenLE = raw.length >= 2 ? (java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.BIG_ENDIAN).getShort(0) & 0xFFFF) : 0;
+
+            int strLen = lenBE;
+            if (2 + lenBE > raw.length && 2 + lenLE <= raw.length) {
+                strLen = lenLE;
+            } else if (2 + lenBE > raw.length) {
+                strLen = -1; // neither endianness fits
+            }
+
+            if (strLen > 0 && 2 + strLen <= raw.length) {
+                int prefix = raw[2] & 0xFF;
+                String strVal = stripNulls(Arrays.copyOfRange(raw, 3, 3 + strLen)).trim();
+                long sequence = 0L;
+                int nextOffset = 3 + strLen;
+                if (nextOffset < raw.length && raw[nextOffset] == 0) nextOffset++;
+                int sequenceBytes = raw.length - nextOffset;
+                if (sequenceBytes >= 8) {
+                    sequence = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                        .getLong(nextOffset) & 0xFFFFFFFFFFFFFFFFL;
+                } else if (sequenceBytes >= 4) {
+                    sequence = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                        .getInt(nextOffset) & 0xFFFFFFFFL;
+                }
+                if (!strVal.isEmpty()) {
+                    return Optional.of(new MessageAckView(strVal, sequence, prefix));
+                }
+            }
+        } catch (Exception _) {
+            // fall through to UUID regex path
+        }
+
+        // Path 2: regex UUID fallback. Scan the body for a UUID and grab the trailing
+        // 8 bytes as sequence (legacy `decodeCmd16386` second fallback).
+        try {
+            String text = new String(raw, StandardCharsets.UTF_8);
+            java.util.regex.Matcher m = UUID_PATTERN.matcher(text);
+            if (m.find()) {
+                String msgId = m.group();
+                long sequence = 0L;
+                if (raw.length >= 8) {
+                    java.nio.ByteBuffer le = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+                    sequence = (raw.length >= 12)
+                        ? (le.getLong(raw.length - 8) & 0xFFFFFFFFFFFFFFFFL)
+                        : (le.getInt(raw.length - 4) & 0xFFFFFFFFL);
+                }
+                return Optional.of(new MessageAckView(msgId, sequence, 0));
+            }
+        } catch (Exception _) {
+            // fall through
+        }
+        return Optional.empty();
+    }
+
+    record MessageAckView(String msgId, long sequence, int prefix) {}
+
+    private static final java.util.regex.Pattern UUID_PATTERN = java.util.regex.Pattern.compile(
+        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", java.util.regex.Pattern.CASE_INSENSITIVE);
+
     private static String stripNulls(byte[] bytes) {
         return new String(bytes, StandardCharsets.UTF_8).replace("\0", "");
     }

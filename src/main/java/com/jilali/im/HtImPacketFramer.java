@@ -23,6 +23,7 @@ final class HtImPacketFramer {
     static final int CMD_LOGIN            = 0x1025; // 4133  — send credentials
     static final int CMD_HEARTBEAT        = 0x9001; // 36865 — ping
     static final int CMD_PONG             = 0x9002; // 36866 — server heartbeat response
+    static final int CMD_MSG_ACK          = 16386;  // 0x4002 — server MSG-ACK echo of our outbound DM (delivery receipt)
     static final int CMD_TYPING           = 16407;  // 0x4017 — typing push
     static final int CMD_PRIVATE_MSG      = 16385;  // 0x4001 — 1:1 private text/image/introduction/gift/voice_room/live_link message sender
     static final int CMD_READ_RECEIPT     = 16405;  // 0x4015 — read-receipt sender (also reused for offline-page sync — see CMD_OFFLINE_SYNC_PAGE)

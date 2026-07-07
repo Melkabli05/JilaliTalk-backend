@@ -229,6 +229,20 @@ class HtImUpstreamConnector implements AutoCloseable {
         // Always ACK first
         sendBinary(buildAck(data));
 
+        // MSG-ACK (cmdId 16386) is the upstream's echo confirming it accepted an outbound
+        // DM we sent. Body is short binary ([u16 strLen][strVal UTF-8][u64 LE sequence]
+        // per connectwebsock.js decodeCmd16386) — NOT a JSON push. Route it before the
+        // first-byte decoder to avoid the JSON-discard path that notifyMapper would hit.
+        if (h.cmdId() == CMD_MSG_ACK) {
+            byte[] body = HtImPacketFramer.copyPayload(data, payloadLen);
+            decoder.decodeMsgAck(body).ifPresent(ack -> {
+                log.info("IM: MSG-ACK msgId={} sequence={} prefix=0x{}", ack.msgId(), ack.sequence(),
+                    Integer.toHexString(ack.prefix()));
+                emit(new ImRealtimeEvent.MessageAck(ack.msgId(), ack.sequence(), ack.prefix()));
+            });
+            return;
+        }
+
         F2Push push = decoder.decodeF2(data, payloadLen, sessionKey);
         dispatchPush(push, h);
     }

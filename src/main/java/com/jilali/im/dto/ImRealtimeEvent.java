@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = ImRealtimeEvent.GroupMessage.class,         name = "group_message"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.TypingIndicator.class,      name = "typing_indicator"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.ReadReceipt.class,          name = "read_receipt"),
+    @JsonSubTypes.Type(value = ImRealtimeEvent.MessageAck.class,            name = "message_ack"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.AccountStatus.class,        name = "account_status"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.Error.class,                name = "error"),
 })
@@ -43,6 +44,7 @@ public sealed interface ImRealtimeEvent permits
     ImRealtimeEvent.GroupMessage,
     ImRealtimeEvent.TypingIndicator,
     ImRealtimeEvent.ReadReceipt,
+    ImRealtimeEvent.MessageAck,
     ImRealtimeEvent.AccountStatus,
     ImRealtimeEvent.Error {
 
@@ -83,6 +85,17 @@ public sealed interface ImRealtimeEvent permits
     record TypingIndicator(String fromUserId, boolean isTyping) implements ImRealtimeEvent {}
 
     record ReadReceipt(String msgId) implements ImRealtimeEvent {}
+
+    /**
+     * Server echo for a DM we just sent (cmdId 16386 on the upstream socket). Payload
+     * shape: short binary body {@code [u16 strLen][strVal UTF-8][u64 LE sequence][prefix byte]}
+     * per the legacy {@code connectwebsock.js} {@code decodeCmd16386}, decoded by
+     * {@link com.jilali.im.HtImFrameDecoder#decodeMsgAck}. The frontend uses {@code msgId}
+     * to flip the matching local bubble's send-state to "delivered", and {@code prefix}
+     * to distinguish a successful ACK (any non-zero prefix byte typically means the
+     * server accepted) from a failure ACK (≤16-byte empty body).
+     */
+    record MessageAck(String msgId, long sequence, int prefix) implements ImRealtimeEvent {}
 
     record AccountStatus(String status) implements ImRealtimeEvent {}
 
