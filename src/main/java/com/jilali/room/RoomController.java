@@ -27,6 +27,7 @@ import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
 import jakarta.validation.Valid;
@@ -34,6 +35,7 @@ import jakarta.validation.Valid;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 /**
  * Our public room API. Discovery and info are pure read pass-throughs — no service layer,
@@ -140,7 +142,7 @@ public class RoomController {
         // fresh=true (see RoomPageComponent / VideoRoomPageComponent), so without this
         // protection a freshly created room's first viewport load 500s and bounces the
         // user back to home with a wrong "please create a new one" message.
-        var info = roomJoinService.withUpstreamRetry(() ->
+        var info = withUpstreamRetryOrRethrow(() ->
                 JilaliResponses.unwrap(client.voiceRoomInfo(cname)));
         return decryptRtcToken(info);
     }
@@ -149,9 +151,27 @@ public class RoomController {
     public VoiceRoomInfoResponse liveRoomInfo(String cname) {
         // Same retry note as voiceRoomInfo above (this is the fresh-room counterpart
         // for the live/video room page).
-        var info = roomJoinService.withUpstreamRetry(() ->
+        var info = withUpstreamRetryOrRethrow(() ->
                 JilaliResponses.unwrap(client.liveRoomInfo(cname)));
         return decryptRtcToken(info);
+    }
+
+    /**
+     * Adapts {@link RoomJoinService#withUpstreamRetry} (declared {@code throws Exception} so it
+     * can wrap a {@link java.util.concurrent.Callable}) to these two endpoints, which have no
+     * checked exception of their own to declare. Mirrors the catch pattern in
+     * {@link RoomJoinService#joinBundle}: rethrow {@link HttpClientResponseException} unwrapped
+     * so {@code GlobalErrorHandler.UpstreamTransportExceptionHandler} can log upstream's actual
+     * response body, wrap anything else in a {@link RuntimeException}.
+     */
+    private <T> T withUpstreamRetryOrRethrow(Callable<T> call) {
+        try {
+            return roomJoinService.withUpstreamRetry(call);
+        } catch (HttpClientResponseException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Upstream fetch failed", e);
+        }
     }
 
     /**

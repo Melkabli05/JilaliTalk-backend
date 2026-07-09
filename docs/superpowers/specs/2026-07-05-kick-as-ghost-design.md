@@ -29,13 +29,16 @@ reviewable event rather than a transient toast.
 ## In scope
 
 - The frontend `room_kick` handler in `room-page-base.ts`.
-- Local state transitions on `BaseRoomStore`, `AudienceStore`,
-  `CommentsStore`, and the existing toast/notification/event-card
-  surfaces.
-- A new optional `managerId` field on the `room_kick` realtime event
-  type so the notification panel can render the manager's profile.
-- A small new `_kicked` flag on `BaseRoomStore` that blocks manual
-  visibility restoration and stage rejoin until `leaveRoom()`.
+- A new `_kicked` guard on `BaseRoomStore` (blocks `setVisibility(true)`
+  until `leaveRoom()`).
+- Calling existing methods on `StageStore` (`removeStageUser`),
+  `NotificationStore` (`addUserEvent`), and `CommentsStore`
+  (`pushUserEventCard`) from the new kick handler — none of these
+  stores themselves change. `AudienceStore` needs no call at all; its
+  own existing `room_kick` handling already removes the user.
+- A new optional `managerId` / `managerHeadUrl` field on the `room_kick`
+  realtime event type so the notification panel can render the
+  manager's profile.
 - A pure helper `kick-handler.util.ts` extracted for testability.
 - Unit tests for the helper (Vitest).
 
@@ -76,11 +79,14 @@ that:
    immediately. The header's "Go visible" toggle and any future
    identity-revealing action check the new `_kicked` flag and refuse
    while set.
-2. If `roomStore.isOnStage()` (Host or Moderator), calls
-   `api.leaveStage(cname, busiType)` (best-effort) and demotes
-   `roomStore.setRole(UserRole.Normal)`.
-3. Removes the local user from the audience list via a new
-   `audienceStore.removeUser(userId)` method.
+2. If `roomStore.isOnStage()`, calls `api.leaveStage(cname, busiType)`
+   (best-effort) and `stageStore.removeStageUser(userId)` to drop the
+   user from the local stage list immediately (the BFF may or may not
+   also emit a `stage_kick` event; the explicit remove guarantees
+   the user is off-stage on this client regardless).
+3. The audience list removal is **already handled by
+   `AudienceStore`'s own `room_kick` switch case** at
+   `audience-store.ts:137`. No work needed here.
 4. Fires a warning toast: `You were removed from "{roomName}" by
    {managerName}. You are now an invisible listener.`
 5. Adds a notification via
@@ -105,16 +111,17 @@ this flag.
 
 | File | Change |
 |---|---|
-| `JilaliTalk-angular-frontend/src/app/core/realtime/room-realtime-events.ts` | Add optional `managerId?: string` to the `room_kick` event variant. |
-| `JilaliTalk-angular-frontend/src/app/features/room/state/base-room-store.ts` | Add `_kicked` signal + `setVisibility`/`setRole` guards + clear on `leaveRoom`. |
-| `JilaliTalk-angular-frontend/src/app/features/room/state/audience-store.ts` | Add `removeUser(userId)` method (in-memory list mutation, matches existing audience-list update pattern). |
+| `JilaliTalk-angular-frontend/src/app/core/realtime/room-realtime-events.ts` | Add optional `managerId?: string` and `managerHeadUrl?: string \| null` to the `room_kick` event variant. |
+| `JilaliTalk-angular-frontend/src/app/features/room/state/base-room-store.ts` | Add `_kicked` signal + `setVisibility(true)` guard + clear on `leaveRoom`. |
+| `JilaliTalk-angular-frontend/src/app/features/room/state/stage-store.ts` | No new method needed — `removeStageUser(uid)` already exists (used today in `room-page.ts:493`) and is called directly from the kick handler. |
 | `JilaliTalk-angular-frontend/src/app/features/room/data/kick-handler.util.ts` | **New.** Pure `processKick(event, deps)` helper returning `{ shouldReturn: boolean }` to indicate whether the caller should return early (i.e., the event wasn't for the local user). |
-| `JilaliTalk-angular-frontend/src/app/features/room/data/kick-handler.util.spec.ts` | **New.** Vitest tests for the helper covering: not-me event, leaveStage not on stage, leaveStage failure, managerId missing, audience removeUser, full happy path. |
+| `JilaliTalk-angular-frontend/src/app/features/room/data/kick-handler.util.spec.ts` | **New.** Vitest tests for the helper covering: not-me event, not on stage, on stage, `leaveStage` failure, `managerId` missing, full happy path. |
 | `JilaliTalk-angular-frontend/src/app/features/room/pages/room-page-base.ts` | Replace lines 130–135 with a single call to `processKick(...)`. Inject `NotificationStore`. |
-| `JilaliTalk-angular-frontend/src/app/features/room/feature/room-header/room-header.ts` | The existing "Go visible" handler calls `roomStore.setVisibility(true)` — that method now refuses when `_kicked` is set, so the toggle silently fails for the kicked user. No template change needed; behavior emerges from the guard. |
+| `JilaliTalk-angular-frontend/src/app/features/room/feature/room-header/room-header.ts` | No change. The existing "Go visible" handler calls `roomStore.setVisibility(true)` in the page component (`room-page.ts:365`, `video-room-page.ts:414`) — that method now refuses when `_kicked` is set, so the toggle silently no-ops for the kicked user. Behavior emerges from the `BaseRoomStore` guard; no template or header-component change needed. |
 
-`comments-store.ts` and `event-card.ts` are already wired for
-`room_kick` event cards — no changes there.
+`comments-store.ts`, `event-card.ts`, and `audience-store.ts` are
+already wired for `room_kick` (audience removal + event card) — no
+changes there.
 
 ## Event payload change
 
@@ -138,10 +145,16 @@ existing payload).
 
 ## State machine on `BaseRoomStore`
 
-`setVisibility(true)` and `setRole(<non-Normal>)` (or any new "stage
-join" entry point) gate on `!_kicked()`. If `_kicked()` is true, the
-call is a no-op (no error toast; the user is already in the kicked
-state).
+`setVisibility(true)` gates on `!_kicked()` — if `_kicked()` is true,
+the call is a no-op (no error toast; the user is already in the kicked
+state). This is the only guard needed: `setRole()` is called exactly
+once today, at initial room join (`room-page.ts:274`,
+`video-room-page.ts:332`) — there is no live "become a moderator again"
+call path mid-session for the local user (mod_accepted/mod_removed for
+the local user only surface as a toast via `ImBootstrapService`, per
+`im-bootstrap.service.ts:105-108` — they don't call `setRole`). So
+guarding `setRole` would protect against a call path that doesn't
+exist; not adding that guard keeps the change minimal.
 
 `_kicked` is set to `true` only by the kick handler. It is cleared by
 `leaveRoom()` (i.e., during navigation away).
@@ -153,8 +166,8 @@ kicked until the room page unmounts.
 
 - `leaveStage()` failure: log via `console.warn`, do not show error
   toast. Server has already removed the user; local state flips anyway.
-- `audienceStore.removeUser()` for a user not in the list: no-op (the
-  audience list is a simple `update` filter).
+- `stageStore.removeStageUser()` for a user not currently on stage:
+  no-op (existing method, simple `filter`).
 - `managerId` missing on the event: notification entry added with
   `userId: undefined`; comment panel card unaffected.
 - `_kicked` guard blocking `setVisibility(true)`: silent no-op. The
@@ -168,10 +181,10 @@ kicked until the room page unmounts.
   - event for a different user → returns `{ shouldReturn: true }`,
     no other side effects.
   - event for the local user, not on stage → no `leaveStage` call,
-    audience removed, notification added, toast fired.
+    notification added, toast fired.
   - event for the local user, on stage as moderator → `leaveStage`
-    called, role flipped to Normal.
-  - `leaveStage` rejects → logged warning, role still flipped.
+    called, `removeStageUser` called.
+  - `leaveStage` rejects → logged warning, `removeStageUser` still called.
   - `managerId` missing → notification entry has no `userId`.
 - **Manual:** Trigger a kick from a second account, observe toast,
   verify notification entry appears with manager avatar, verify
