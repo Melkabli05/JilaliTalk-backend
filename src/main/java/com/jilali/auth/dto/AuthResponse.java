@@ -11,6 +11,9 @@ public record AuthResponse(AuthUser user) {
         long userId,
         String nickname,
         String email,
-        @Nullable String headUrl
+        @Nullable String headUrl,
+        String imJwt,
+        String imDeviceId,
+        String imDeviceModel
     ) {}
 }
