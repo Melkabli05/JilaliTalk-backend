@@ -8,9 +8,6 @@
     <logger name="io.micronaut.http.client" level="DEBUG"/>
     <logger name="io.micronaut.serde" level="WARN"/>
     <logger name="com.jilali" level="DEBUG"/>
-    <!-- TRACE temporarily on again: correlating notify_type 39 with a specific room action.
-         Revert once identified — see handleFrame's "LiveHub RX" line in HtLiveHubUpstreamConnector. -->
-    <logger name="com.jilali.realtime" level="TRACE"/>
 
     <root level="info">
         <appender-ref ref="STDOUT"/>
