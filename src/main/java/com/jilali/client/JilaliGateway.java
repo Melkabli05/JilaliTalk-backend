@@ -1,8 +1,11 @@
 package com.jilali.client;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.core.JilaliException;
 import com.jilali.core.JilaliProperties;
 import com.jilali.core.JwtUtil;
+import com.jilali.crypto.Cc2018Cipher;
 import com.jilali.crypto.Curve25519SessionGenerator;
 import com.jilali.crypto.EncbinUtil;
 import com.jilali.room.AgoraTokenCipher;
@@ -15,6 +18,7 @@ import com.jilali.stage.dto.StageActionRequest;
 import com.jilali.stage.dto.StageInviteApprovalRequest;
 import com.jilali.stage.dto.StageInviteRequest;
 import com.jilali.stage.dto.StageListResponse;
+import com.jilali.user.dto.RoomUserProfileResponse;
 import com.jilali.user.dto.UserInfo;
 import com.jilali.user.dto.UserInfoRequest;
 import com.jilali.user.dto.UserInfoResponse;
@@ -38,6 +42,7 @@ import org.slf4j.LoggerFactory;
  * envelope unwrapping live here:
  * <ul>
  *   <li>{@code userInfo} — encrypted ht/encbin call with Curve25519 key exchange</li>
+ *   <li>{@code roomUserProfile} — bin/cc2018-decoded call, the only source of per-target-user follow status</li>
  *   <li>{@code publisherToken} — AES decryption of the upstream Agora token</li>
  *   <li>{@code claimVipTrial} — finds and activates an unused 24h VIP-trial card perk</li>
  * </ul>
@@ -48,6 +53,9 @@ import org.slf4j.LoggerFactory;
 public class JilaliGateway {
 
     private static final Logger log = LoggerFactory.getLogger(JilaliGateway.class);
+
+    private static final ObjectMapper ROOM_PROFILE_MAPPER = new ObjectMapper()
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
     /** scene_id/feature_id identifying the 24h VIP trial perk on a VIP experience card. */
     private static final String VIP_TRIAL_SCENE_ID = "30000";
@@ -241,6 +249,31 @@ public class JilaliGateway {
         }
         UserInfoResponse raw = EncbinUtil.decrypt(responseBytes, session.sharedSecret(), UserInfoResponse.class);
         return raw.toUserInfo();
+    }
+
+    /**
+     * Room-scoped, per-target-user profile lookup ({@code GET livehub/user/profile}) — this is
+     * the one place the upstream API exposes the viewer's follow relation to an arbitrary user
+     * ({@code data.follow_stat.status}); {@link #userInfo} (the general {@code /profile/v2/userinfo}
+     * endpoint) never returns it. No request-side encryption or key exchange is needed (it's a
+     * plain GET), only response decoding via {@link Cc2018Cipher#decode}.
+     */
+    public RoomUserProfileResponse roomUserProfile(long userId, String cname, int busiType) {
+        byte[] encoded = client.userProfile(busiType, cname, userId);
+        if (encoded == null || encoded.length == 0) {
+            throw new JilaliException(1, "Empty room user-profile response", HttpStatus.BAD_GATEWAY);
+        }
+        byte[] json;
+        try {
+            json = Cc2018Cipher.decode(encoded);
+        } catch (RuntimeException e) {
+            throw new JilaliException(1, "Room user-profile decode failed: " + e.getMessage(), HttpStatus.BAD_GATEWAY);
+        }
+        try {
+            return ROOM_PROFILE_MAPPER.readValue(json, RoomUserProfileResponse.class);
+        } catch (java.io.IOException e) {
+            throw new JilaliException(1, "Room user-profile deserialization failed: " + e.getMessage(), HttpStatus.BAD_GATEWAY);
+        }
     }
 
     /**

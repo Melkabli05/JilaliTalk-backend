@@ -273,9 +273,9 @@ public interface JilaliClient {
     JilaliEnvelope<HostStatus> hostStatus();
 
     /**
-     * Profile is served as a binary {@code bin/cc2018} payload, NOT JSON. We return the raw bytes
-     * and let the controller forward them with the upstream content type rather than attempting a
-     * deserialization that would always fail.
+     * Profile is served as a binary {@code bin/cc2018} payload, NOT JSON — Micronaut's Jackson
+     * codec can't deserialize it directly, so this returns the raw bytes for
+     * {@link JilaliGateway#roomUserProfile} to decode via {@link com.jilali.crypto.Cc2018Cipher}.
      */
     @Get(value = "/user/profile", processes = MediaType.APPLICATION_OCTET_STREAM)
     byte[] userProfile(@QueryValue("busi_type") int busiType,

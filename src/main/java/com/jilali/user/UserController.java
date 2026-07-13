@@ -11,10 +11,10 @@ import com.jilali.user.dto.HeartbeatRequest;
 import com.jilali.user.dto.HostStatus;
 import com.jilali.user.dto.RoomUserListRequest;
 import com.jilali.user.dto.RoomUserListResponse;
+import com.jilali.user.dto.RoomUserProfileResponse;
 import com.jilali.user.dto.UserInfo;
 import com.jilali.user.dto.UserStatus;
 import io.micronaut.http.HttpResponse;
-import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
@@ -28,9 +28,10 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 
 /**
- * User room actions (join/quit) and status/profile reads. The profile endpoint is the one place
- * upstream returns binary (bin/cc2018) rather than JSON; we forward the bytes untouched with the
- * correct content type instead of pretending to parse them.
+ * User room actions (join/quit) and status/profile reads. The room-scoped profile endpoint
+ * ({@code /{userId}/profile}) is decoded server-side via {@link com.jilali.crypto.Cc2018Cipher}
+ * (see {@link JilaliGateway#roomUserProfile}) rather than forwarded as raw bin/cc2018 bytes — it's
+ * the only upstream call that exposes the viewer's follow relation to an arbitrary user.
  */
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/users")
@@ -121,12 +122,11 @@ public class UserController {
         return JilaliResponses.unwrap(gateway.client().hostStatus());
     }
 
-    @Get(value = "/{userId}/profile", produces = MediaType.APPLICATION_OCTET_STREAM)
-    public HttpResponse<byte[]> profile(long userId,
+    @Get("/{userId}/profile")
+    public RoomUserProfileResponse profile(long userId,
                                         @QueryValue String cname,
                                         @QueryValue(defaultValue = "2") int busiType) {
-        var bytes = gateway.client().userProfile(busiType, cname, userId);
-        return HttpResponse.ok(bytes).contentType("bin/cc2018");
+        return gateway.roomUserProfile(userId, cname, busiType);
     }
 
     @Get("/info")
