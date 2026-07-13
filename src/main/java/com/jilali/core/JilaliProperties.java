@@ -15,6 +15,7 @@ public record JilaliProperties(
         @Nullable String defaultAuthToken,
         @Nullable String agoraCipherKey,
         @Nullable String serverPubKeyHex,
+        @Nullable String translateServerPubKeyHex,
         @Nullable String deviceId,
         @Nullable String deviceModel,
         @Nullable List<String> allowedWebSocketOrigins) {
@@ -27,6 +28,7 @@ public record JilaliProperties(
         defaultAuthToken = defaultAuthToken != null ? defaultAuthToken : "";
         agoraCipherKey   = agoraCipherKey   != null ? agoraCipherKey   : "";
         serverPubKeyHex  = serverPubKeyHex  != null ? serverPubKeyHex  : "";
+        translateServerPubKeyHex = translateServerPubKeyHex != null ? translateServerPubKeyHex : "";
         deviceId         = deviceId         != null && !deviceId.isBlank()
             ? deviceId : FALLBACK_DEVICE_ID;
         deviceModel      = deviceModel      != null && !deviceModel.isBlank()

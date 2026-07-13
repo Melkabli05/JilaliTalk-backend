@@ -55,6 +55,40 @@ public final class EncbinUtil {
         }
     }
 
+    /** Encrypts raw bytes with no JSON serialization — for per-field ciphertext (e.g. the
+     *  {@code translate/v2/ai_translator/translate} endpoint, which AES-encrypts only the
+     *  {@code text} field's plaintext, not a whole JSON envelope). */
+    public static byte[] encryptRaw(byte[] plaintext, String sharedSecretHex) {
+        try {
+            byte[] key = hexStringToBytes(sharedSecretHex);
+            byte[] output = new byte[plaintext.length + 32];
+            int len = crypt(plaintext, key, output, true);
+            byte[] result = new byte[len];
+            System.arraycopy(output, 0, result, 0, len);
+            return result;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("ht/encbin raw encryption failed: " + e.getClass().getName() + " " + e.getMessage(), e);
+        }
+    }
+
+    /** Decrypts raw bytes with no JSON deserialization — the counterpart to {@link #encryptRaw}. */
+    public static byte[] decryptRaw(byte[] encrypted, String sharedSecretHex) {
+        try {
+            byte[] key = hexStringToBytes(sharedSecretHex);
+            byte[] output = new byte[encrypted.length + 32];
+            int len = crypt(encrypted, key, output, false);
+            byte[] result = new byte[len];
+            System.arraycopy(output, 0, result, 0, len);
+            return result;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("ht/encbin raw decryption failed: " + e.getClass().getName() + " " + e.getMessage(), e);
+        }
+    }
+
     public static byte[] decryptToJson(byte[] encrypted, String sharedSecretHex) {
         try {
             byte[] key = hexStringToBytes(sharedSecretHex);

@@ -1,6 +1,7 @@
 package com.jilali.client;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.core.JilaliException;
 import com.jilali.core.JilaliProperties;
@@ -18,6 +19,7 @@ import com.jilali.stage.dto.StageActionRequest;
 import com.jilali.stage.dto.StageInviteApprovalRequest;
 import com.jilali.stage.dto.StageInviteRequest;
 import com.jilali.stage.dto.StageListResponse;
+import com.jilali.translate.dto.AiTranslateUpstreamRequest;
 import com.jilali.user.dto.RoomUserProfileResponse;
 import com.jilali.user.dto.UserInfo;
 import com.jilali.user.dto.UserInfoRequest;
@@ -37,6 +39,9 @@ import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
 /**
  * The seam between our application and Jilali. Only the methods that perform real work beyond
  * envelope unwrapping live here:
@@ -45,6 +50,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code roomUserProfile} — bin/cc2018-decoded call, the only source of per-target-user follow status</li>
  *   <li>{@code publisherToken} — AES decryption of the upstream Agora token</li>
  *   <li>{@code claimVipTrial} — finds and activates an unused 24h VIP-trial card perk</li>
+ *   <li>{@code aiTranslate} — per-field ht/encbin call (Curve25519 + AES) to the AI translator</li>
  * </ul>
  * All other endpoints are plain pass-throughs and are called directly from controllers via
  * {@link JilaliClient} + {@link JilaliResponses#unwrap}.
@@ -55,6 +61,9 @@ public class JilaliGateway {
     private static final Logger log = LoggerFactory.getLogger(JilaliGateway.class);
 
     private static final ObjectMapper ROOM_PROFILE_MAPPER = new ObjectMapper()
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
+    private static final ObjectMapper TRANSLATE_MAPPER = new ObjectMapper()
         .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
     /** scene_id/feature_id identifying the 24h VIP trial perk on a VIP experience card. */
@@ -288,5 +297,90 @@ public class JilaliGateway {
             throw new JilaliException(1, "Upstream returned null publisher token for " + cname, HttpStatus.BAD_GATEWAY);
         }
         return new PublisherTokenResponse(AgoraTokenCipher.decrypt(token, agoraCipherKey));
+    }
+
+    /**
+     * Live-translates free text via HelloTalk's AI translator (Qwen-MT). Same ht/encbin
+     * Curve25519 + AES-256-ECB cipher as {@link #userInfo}, but the envelope differs: only the
+     * request's {@code text} field and each streamed chunk's {@code result} field are
+     * individually encrypted (base64, raw bytes — no JSON/gzip wrapper), not the whole
+     * request/response body, and the response arrives as an SSE stream of incremental chunks
+     * that must be decrypted and concatenated in order.
+     * <p>
+     * Cached by {@code (text, targetLang)} — the same popular comment is often translated by
+     * several viewers into the same language.
+     */
+    @Cacheable("ai-translate")
+    public String aiTranslate(String text, String targetLang) {
+        var session = Curve25519SessionGenerator.generate(properties.translateServerPubKeyHex());
+        byte[] encryptedText = EncbinUtil.encryptRaw(text.getBytes(StandardCharsets.UTF_8), session.sharedSecret());
+
+        String token = properties.defaultAuthToken();
+        Long callerUid = JwtUtil.uidFromBearer("Bearer " + token);
+
+        AiTranslateUpstreamRequest upstreamRequest = new AiTranslateUpstreamRequest(
+            targetLang,
+            null,
+            Base64.getEncoder().encodeToString(encryptedText),
+            "HelloTalk",
+            "qwen_mt_plus",
+            false,
+            null
+        );
+        byte[] bodyBytes;
+        try {
+            bodyBytes = TRANSLATE_MAPPER.writeValueAsBytes(upstreamRequest);
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("ai_translator request serialization failed", e);
+        }
+
+        HttpRequest<byte[]> httpRequest = HttpRequest.POST("/translate/v2/ai_translator/translate", bodyBytes)
+            .header("Content-Type", "application/json")
+            .header("Accept", "text/event-stream")
+            .header("x-translate-pub", session.headerValue())
+            .header("x-translate-uid", callerUid != null ? String.valueOf(callerUid) : "")
+            .header("x-translate-os", "ios")
+            .header("x-translate-build", "70")
+            .header("x-translate-version", "6.3.0")
+            .header("User-Agent", "HelloTalk_Binary/70 CFNetwork/3860.500.112 Darwin/25.4.0")
+            .header("Authorization", "Bearer " + token);
+
+        BlockingHttpClient blockingClient = httpClient.toBlocking();
+        byte[] responseBytes;
+        try {
+            responseBytes = blockingClient.retrieve(httpRequest, byte[].class);
+        } catch (HttpClientResponseException e) {
+            String body = e.getResponse().getBody(String.class).orElse("<no body>");
+            log.error("aiTranslate upstream error: status={}, body={}", e.getStatus(), body);
+            throw new JilaliException(1, "Upstream translate failed: " + e.getStatus(), HttpStatus.BAD_GATEWAY);
+        }
+        if (responseBytes == null || responseBytes.length == 0) {
+            throw new JilaliException(1, "Empty translate response", HttpStatus.BAD_GATEWAY);
+        }
+        return decodeSseTranslation(responseBytes, session.sharedSecret());
+    }
+
+    /** Parses the {@code ai_translator/translate} SSE stream, decrypting and concatenating each
+     *  chunk's {@code data.result} field in order until {@code data: [DONE]}. */
+    private String decodeSseTranslation(byte[] sseBytes, String sharedSecretHex) {
+        StringBuilder result = new StringBuilder();
+        String sse = new String(sseBytes, StandardCharsets.UTF_8);
+        for (String line : sse.split("\n")) {
+            if (!line.startsWith("data: ") || line.equals("data: [DONE]")) continue;
+            try {
+                JsonNode node = TRANSLATE_MAPPER.readTree(line.substring("data: ".length()));
+                JsonNode resultNode = node.path("data").path("result");
+                if (resultNode.isTextual()) {
+                    byte[] chunk = EncbinUtil.decryptRaw(Base64.getDecoder().decode(resultNode.asText()), sharedSecretHex);
+                    result.append(new String(chunk, StandardCharsets.UTF_8));
+                }
+            } catch (Exception e) {
+                log.warn("aiTranslate: failed to decode SSE chunk: {}", line, e);
+            }
+        }
+        if (result.isEmpty()) {
+            throw new JilaliException(1, "Translate produced no output", HttpStatus.BAD_GATEWAY);
+        }
+        return result.toString();
     }
 }

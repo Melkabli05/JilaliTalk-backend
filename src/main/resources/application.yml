@@ -74,6 +74,12 @@ micronaut:
     reference-data:
       expire-after-write: 6h
       maximum-size: 50
+    # Caches JilaliGateway.aiTranslate() — same (text, targetLang) pair is often requested by
+    # several viewers translating the same popular comment. Write-based TTL since translations
+    # don't change once produced.
+    ai-translate:
+      expire-after-write: 24h
+      maximum-size: 5000
 
 endpoints:
   all:
@@ -119,6 +125,9 @@ jilali:
     - accept-language
   # HelloTalk server's static Curve25519 public key (hex). Set LIVEHUB_SERVER_PUB_KEY env var.
   server-pub-key-hex: ${LIVEHUB_SERVER_PUB_KEY:f684f611b895a5d3abc124a20ca2dfd397662318cfd4fd74b80aba478c17ca68}
+  # Static Curve25519 public key (hex) for the AI translator service (api-global.hellotalk8.com/translate/*)
+  # — a different microservice than livehub, with its own key. Set LIVEHUB_TRANSLATE_SERVER_PUB_KEY env var.
+  translate-server-pub-key-hex: ${LIVEHUB_TRANSLATE_SERVER_PUB_KEY:5b1040dac31a5c2ff33f14508213a01273c7a40f5e346640bbca9a3e4b933a50}
   # Device ID sent to the HelloTalk userinfo endpoint. Set LIVEHUB_DEVICE_ID env var.
   device-id: ${LIVEHUB_DEVICE_ID:0cb9173191e58a7bad9bbdc9fede8b9e}
   # Device model string sent in the IM login packet. Set LIVEHUB_DEVICE_MODEL env var.
