@@ -60,6 +60,15 @@ public class TranslateService {
     /**
      * Translates {@code text} into {@code targetLang} via the upstream AI translator.
      *
+     * <p>Cache note: {@code @Cacheable("ai-translate")} is keyed on {@code (text, targetLang)}
+     * alone. Translation output has no per-user attribution in the product (no "translated by X"
+     * surface — the caller is anonymous w.r.t. the translation), and the upstream JWT/uid must be
+     * consistent with whichever token is in the {@code Authorization} header for this call —
+     * same reasoning as {@link com.jilali.client.JilaliGateway#userInfo}, which is documented
+     * inline for the same reason. So {@link #jwtUid} pins to the shared default token by
+     * design; switching to a per-session token would silently corrupt the cache (different
+     * callers' results would collide) without changing any observable behavior.
+     *
      * @throws JilaliException when the upstream call fails or returns no usable chunks
      */
     @Cacheable("ai-translate")
