@@ -8,6 +8,9 @@
     <logger name="io.micronaut.http.client" level="DEBUG"/>
     <logger name="io.micronaut.serde" level="WARN"/>
     <logger name="com.jilali" level="DEBUG"/>
+    <!-- TEMP diagnostic for ht_im/sock 400 Bad Request debugging - remove after -->
+    <logger name="io.micronaut" level="DEBUG"/>
+    <logger name="io.netty" level="DEBUG"/>
 
     <root level="info">
         <appender-ref ref="STDOUT"/>
