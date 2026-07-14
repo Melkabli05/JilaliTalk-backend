@@ -54,4 +54,15 @@ public final class JilaliException extends RuntimeException {
         };
         return new JilaliException(code, msg == null ? "Upstream error" : msg, status);
     }
+
+    /**
+     * Builds a {@link JilaliException} for failures that didn't come from a structured upstream
+     * error code — I/O errors, malformed bodies, empty responses, etc. Always surfaces as
+     * {@code 502 Bad Gateway} because we reached upstream but couldn't turn its reply into a
+     * useful response.
+     */
+    public static JilaliException upstreamFailure(String stage, Throwable cause) {
+        String message = stage + " failed: " + (cause != null ? cause.getMessage() : "unknown");
+        return new JilaliException(0, message, HttpStatus.BAD_GATEWAY);
+    }
 }
