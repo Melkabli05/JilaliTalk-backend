@@ -1,6 +1,5 @@
 package com.jilali.translate;
 
-import com.jilali.client.JilaliGateway;
 import com.jilali.translate.dto.TranslateRequest;
 import com.jilali.translate.dto.TranslateResponse;
 import io.micronaut.http.annotation.Body;
@@ -11,22 +10,21 @@ import io.micronaut.scheduling.annotation.ExecuteOn;
 import jakarta.validation.Valid;
 
 /**
- * AI-translates arbitrary text via HelloTalk's {@code ai_translator} service
- * (see {@link JilaliGateway#aiTranslate}).
+ * AI-translates arbitrary text via the upstream translator (see {@link TranslateService}).
  */
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/translate")
 public class TranslateController {
 
-    private final JilaliGateway gateway;
+    private final TranslateService service;
 
-    public TranslateController(JilaliGateway gateway) {
-        this.gateway = gateway;
+    public TranslateController(TranslateService service) {
+        this.service = service;
     }
 
     @Post
     public TranslateResponse translate(@Valid @Body TranslateRequest request) {
-        String translated = gateway.aiTranslate(request.text(), request.targetLang());
+        String translated = service.translate(request.text(), request.targetLang());
         return new TranslateResponse(translated);
     }
 }
