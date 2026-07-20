@@ -1,6 +1,8 @@
 package com.jilali.user;
 
 import com.jilali.client.ProfileClient;
+import com.jilali.core.JilaliProperties;
+import com.jilali.crypto.ApkSignatureGenerator;
 import com.jilali.user.dto.BlockListResponse;
 import com.jilali.user.dto.FollowRequest;
 import com.jilali.user.dto.FollowResultResponse;
@@ -43,10 +45,12 @@ public class ProfileController {
 
     private final ProfileClient profileClient;
     private final ProfileBundleService bundleService;
+    private final JilaliProperties properties;
 
-    public ProfileController(ProfileClient profileClient, ProfileBundleService bundleService) {
+    public ProfileController(ProfileClient profileClient, ProfileBundleService bundleService, JilaliProperties properties) {
         this.profileClient = profileClient;
         this.bundleService = bundleService;
+        this.properties = properties;
     }
 
     @Get("/me")
@@ -137,9 +141,28 @@ public class ProfileController {
         return profileClient.stats(body);
     }
 
+    /**
+     * The upstream ties visitor-history results to a device it recognizes for this account
+     * (same device_id the IM login handshake already established, {@code DeviceIdStore})
+     * — a request carrying an unrecognized device_id (e.g. a browser-generated placeholder)
+     * comes back {@code 200 "no data currently"} instead of a real list or an error, so this
+     * can't be left as a frontend-supplied field. Only {@code index} (pagination cursor) is
+     * genuinely caller-controlled; everything else about "who we are" is this BFF's own
+     * identity, matching how the IM login packet is built.
+     */
     @Post("/visitors")
     public VisitorsResponse visitors(@Body VisitorHistoryRequest body) {
-        return profileClient.visitors(body);
+        var identifiedBody = new VisitorHistoryRequest(
+            properties.deviceModel(),
+            System.currentTimeMillis(),
+            body.index(),
+            properties.deviceId(),
+            null,
+            ApkSignatureGenerator.VERSION_NAME,
+            0,
+            0
+        );
+        return profileClient.visitors(identifiedBody);
     }
 
     @Post("/edit")
