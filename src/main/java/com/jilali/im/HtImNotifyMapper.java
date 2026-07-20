@@ -25,6 +25,8 @@ final class HtImNotifyMapper {
                 case "image"             -> mapImage(root, h);
                 case "gift"              -> mapGift(root, h);
                 case "introduction"      -> mapIntro(root, h);
+                case "voice_room"        -> mapVoiceRoom(root, h);
+                case "live_link"         -> mapLiveLink(root, h);
                 case "new_voice_visitor" -> mapProfileVisit(root, h);
                 default                  -> null;
             };
@@ -97,6 +99,48 @@ final class HtImNotifyMapper {
             nullableText(profileNode, "country", "nationality"),
             nullableText(profileNode, "bio"),
             msgId);
+    }
+
+    /**
+     * DM-channel voice-room share — live-captured shape (an offline packet_list entry, cmdId
+     * 0x4001, decoded via {@code OfflineSingleChatRequest}'s packet_list, uid 169335562):
+     * <pre>
+     * {"voice_room":{"user_id":168995401,"head_url":"...","cname":"VR_...","active_number":0,
+     *                "from_nickname":"Mikasa", ...},
+     *  "from_nickname":"Mikasa","from_profile_ts":1,"msg_id":"...","msg_model":"normal",
+     *  "msg_type":"voice_room","send_time":"...","server_time":"...","server_ts":...}
+     * </pre>
+     * This is a DIFFERENT wire shape from {@link #mapNotify}'s {@code root.has("cname")} branch
+     * (the LiveHub notify_type-style room-share push, cname at the JSON root) — here the room
+     * payload is nested under a {@code voice_room} key and dispatch is keyed by top-level
+     * {@code msg_type}, exactly mirroring the outbound shape {@code prvgmsgpacket.js}'s
+     * {@code sendTextMessage} builds for {@code type === 'voice_room'} ({@code msg.voice_room =
+     * roomData}). Before this case existed, every voice-room DM share silently vanished — the
+     * switch in {@link #map} fell through to {@code default -> null} for any {@code msg_type}
+     * it didn't recognize, dropping the event before it ever reached {@link #mapNotify}.
+     */
+    private ImRealtimeEvent mapVoiceRoom(JsonNode root, Header h) {
+        JsonNode room = root.path("voice_room");
+        String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
+        String fromNickname = textOr(root, "from_nickname", textOr(room, "from_nickname", ""));
+        String headUrl       = nullableText(room, "head_url");
+        String cname         = textOr(room, "cname", "");
+        String msgId          = nullableText(root, "msg_id");
+        int count             = room.path("active_number").asInt(0);
+        return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, count, msgId);
+    }
+
+    /** Live/video-room counterpart of {@link #mapVoiceRoom} — same envelope shape with the room
+     *  payload nested under {@code live_link} instead of {@code voice_room}, matching
+     *  {@code prvgmsgpacket.js}'s {@code type === 'live_link'} outbound case. */
+    private ImRealtimeEvent mapLiveLink(JsonNode root, Header h) {
+        JsonNode room = root.path("live_link");
+        String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
+        String fromNickname = textOr(root, "from_nickname", textOr(room, "from_nickname", ""));
+        String headUrl       = nullableText(room, "head_url");
+        String cname         = textOr(room, "cname", "");
+        String msgId          = nullableText(root, "msg_id");
+        return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId);
     }
 
     /** Like {@link #nullableText}, but converts non-string JSON values (e.g. {@code sex} is an
