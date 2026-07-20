@@ -14,7 +14,6 @@ import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -108,8 +107,8 @@ public class TranslateService {
         String joined = sse.lines()
                 .filter(line -> line.startsWith(SSE_DATA_PREFIX) && !line.equals(SSE_DONE_SENTINEL))
                 .map(this::parseChunkOrNull)
-                .filter(Objects::nonNull)
-                .map(chunk -> codec.decryptBase64(chunk.result(), sharedSecretHex))
+                .filter(chunk -> chunk != null && chunk.data() != null && chunk.data().result() != null)
+                .map(chunk -> codec.decryptBase64(chunk.data().result(), sharedSecretHex))
                 .collect(Collectors.joining());
 
         if (joined.isEmpty()) {
