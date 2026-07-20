@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jilali.core.ws.ExponentialBackoff;
 import com.jilali.core.ws.HeartbeatPump;
 import com.jilali.core.ws.SequentialSender;
+import com.jilali.realtime.dto.RoomCcRealtimeEvent;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,12 @@ import java.util.function.UnaryOperator;
  * start" is unaffected. This reconnect loop is the only one in play here — {@code
  * RoomEventSource} does not itself retry, so a future change adding retry there too would
  * stack two independent backoff loops.
+ *
+ * <p>The same socket carries both the room channel and the AI-captioning / subtitle
+ * channel. {@link HtNotifyMapper} owns room-channel decoding; {@link HtCcNotifyMapper}
+ * owns the CC channel. The connector dispatches each frame to the right mapper based on
+ * the discriminator in {@link HtCcNotifyMapper#ownsType(String)}: room-shaped frames go
+ * to the room listener, CC-shaped frames go to the CC listener.
  */
 public class HtLiveHubUpstreamConnector implements AutoCloseable {
 
@@ -36,12 +43,14 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     private static final String LIVEHUB_WS_URL = "wss://uploadprocn.hellotalk8.com/livehub/ws/conn";
 
     private final HtNotifyMapper mapper;
+    private final HtCcNotifyMapper ccMapper;
     private final ObjectMapper om;
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("livehub-hb");
     private final ExponentialBackoff backoff = new ExponentialBackoff(Duration.ofSeconds(1), Duration.ofSeconds(30));
 
     private volatile Consumer<RoomRealtimeEvent> eventListener;
+    private volatile Consumer<RoomCcRealtimeEvent> ccEventListener;
     private volatile Runnable disconnectListener;
 
     private volatile WebSocket ws;
@@ -53,14 +62,24 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
      *  has actually answered with its first heartbeat_sec push. */
     private volatile boolean announcedConnected;
 
-    public HtLiveHubUpstreamConnector(HtNotifyMapper mapper, ObjectMapper om) {
+    public HtLiveHubUpstreamConnector(HtNotifyMapper mapper, HtCcNotifyMapper ccMapper, ObjectMapper om) {
         this.mapper = mapper;
+        this.ccMapper = ccMapper;
         this.om = om;
     }
 
     public void attach(Consumer<RoomRealtimeEvent> eventListener, Runnable disconnectListener) {
         this.eventListener = eventListener;
         this.disconnectListener = disconnectListener;
+    }
+
+    /**
+     * Separate listener for the AI-captioning / subtitle channel. Frames whose notify_info
+     * shape matches {@code LiveCCNotify} are routed here instead of to {@link #attach}'s room
+     * listener. Safe to leave unset — CC frames are simply dropped if no listener is attached.
+     */
+    public void attachCc(Consumer<RoomCcRealtimeEvent> ccEventListener) {
+        this.ccEventListener = ccEventListener;
     }
 
     public CompletableFuture<Void> connect(String userId, String cname, boolean isVisitor) {
@@ -175,10 +194,20 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
                         // server ack of our heartbeat — the pump is already scheduled, nothing to do
                     } else {
                         mapper.msgId(text).ifPresent(this::sendAck);
-                        mapper.map(text).ifPresent(event -> {
+                        // Same socket carries both the room channel and the CC/subtitle channel.
+                        // The room mapper has stronger shape constraints (seat_id, lucky_bag_id,
+                        // props_type, etc.), so it gets first dibs — when it produces an event
+                        // we know it's a real room event. Only when the room mapper declines do
+                        // we ask the CC mapper, gated by the CC discriminator to avoid
+                        // accidentally claiming an unrelated unknown room frame.
+                        boolean routedAsRoom = mapper.map(text).map(event -> {
                             Consumer<RoomRealtimeEvent> l = eventListener;
                             if (l != null) l.accept(event);
-                        });
+                            return true;
+                        }).orElse(false);
+                        if (!routedAsRoom && ccEventListener != null && ccMapper.ownsType(text)) {
+                            ccMapper.map(text).ifPresent(event -> ccEventListener.accept(event));
+                        }
                     }
                 });
     }
