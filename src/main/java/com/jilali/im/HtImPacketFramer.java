@@ -27,6 +27,7 @@ final class HtImPacketFramer {
     static final int CMD_TYPING           = 16407;  // 0x4017 — typing push
     static final int CMD_PRIVATE_MSG      = 16385;  // 0x4001 — 1:1 private text/image/introduction/gift/voice_room/live_link message sender
     static final int CMD_READ_RECEIPT     = 16405;  // 0x4015 — read-receipt sender (verified in prvgmsgpacket.js:30 + OfflineSingleChatRequest.smali cmdId mapping)
+    static final int CMD_GROUP_MESSAGE     = 28745; // 0x7049 — group-DM send opcode (GroupMessagePacketRequest.smali cmdId() == 0x7049); reserved, not yet sent from this BFF
     static final int CMD_OFFLINE_SYNC      = 29967; // 0x750F — initial offline-sync trigger (request offline DMs / group msgs)
     static final int CMD_OFFLINE_SYNC_PAGE = 16453; // 0x4045 — paginated offline-sync request (OfflineSingleChatRequest.smali cmdId() == 0x4045; response fields data.last_id / data.has_more / data.packet_list per OfflineSingleChatRequest.generateResult)
     static final int CMD_OFFLINE_RESPONSE  = 16454; // 0x4016 — offline DM response

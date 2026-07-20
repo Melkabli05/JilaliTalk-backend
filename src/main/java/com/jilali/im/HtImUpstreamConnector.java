@@ -336,25 +336,54 @@ class HtImUpstreamConnector implements AutoCloseable {
         }
     }
 
+    /**
+     * Inbound {@code CMD_GROUP_RESPONSE} (cmdId 0x7510) — the server's paginated response to a
+     * {@code CMD_OFFLINE_SYNC} (cmdId 0x750F) request from {@link GroupMsgRequest.smali}.
+     * Envelope shape (verified via smali_classes12/.../GroupMsgRequest.smali {@code generateResult}
+     * lines 121-242 — note the field is {@code msgs}, NOT {@code packet_list} as on the 1:1 path):
+     * <pre>
+     *   { "code": 0,
+     *     "data": { "last_id": &lt;long&gt;,
+     *               "has_more": &lt;int 0|1&gt;,
+     *               "msgs":     [ &lt;base64-encoded F2 push envelope&gt;, ... ] } }
+     * </pre>
+     * Each {@code msgs[]} entry is a base64-wrapped 20-byte-header + encrypted-JSON body packet
+     * — exactly the same wire shape that {@code OfflineSingleChatRequest}'s {@code packet_list}
+     * uses (just renamed). Decoding through {@code decodeOfflinePacket} reuses the existing
+     * decrypt-and-decompress machinery and feeds each item into {@link #dispatchPush}, which
+     * dispatches via {@link HtImNotifyMapper#map} into the proper text/image/gift/introduction
+     * branches (smali {@code zy/a.b(HTIMMessage)} confirms these are the same {@code msg_type}
+     * values the 1:1 DM path uses — only the {@code sender_*}/{@code room_id} fields are
+     * group-specific, and those are already carried in the standard envelope the mapper
+     * understands). This replaces a previous inline parser that read fields at the wrong
+     * nesting level and never matched real group-DM frames.
+     */
     private void handleGroupResponse(JsonNode root) {
-        JsonNode msgs = root.path("data").path("msgs");
+        JsonNode data = root.path("data");
+        JsonNode msgs = data.path("msgs");
         if (!msgs.isArray()) {
             log.info("IM: group sync response no msgs (code={})", root.path("code").asInt(-1));
             return;
         }
+
         int emitted = 0;
-        for (JsonNode msg : msgs) {
-            String senderId   = textOr(msg, "sender_id", "");
-            String senderName = textOr(msg, "sender_name", senderId);
-            String roomName   = textOr(msg, "room_name", textOr(msg, "cname", ""));
-            String text       = msg.path("text").path("text").asText(
-                                    msg.path("text").asText(""));
-            if (!senderId.isEmpty()) {
-                emit(new ImRealtimeEvent.GroupMessage(senderId, senderName, roomName, text));
+        for (JsonNode item : msgs) {
+            String b64 = item.asText(null);
+            if (b64 == null || b64.isEmpty()) continue;
+            Optional<HtImFrameDecoder.OfflinePacket> offline = decoder.decodeOfflinePacket(b64, sessionKey);
+            if (offline.isPresent() && dispatchPush(offline.get().body(), offline.get().header())) {
                 emitted++;
             }
         }
-        log.info("IM: group sync response {} msgs, emitted {} uid={}", msgs.size(), emitted, userId);
+        log.info("IM: group sync response {} msgs, emitted {} events uid={}", msgs.size(), emitted, userId);
+
+        // Pagination matches OfflineSingleChatRequest.smali's has_more gate — see
+        // handleOfflineResponse for the defensive size-based fallback rationale.
+        JsonNode lastIdNode = data.path("last_id");
+        boolean hasMore = data.has("has_more") ? data.path("has_more").asInt(0) != 0 : msgs.size() > 0;
+        if (hasMore && lastIdNode.isNumber()) {
+            sendOfflineSyncRequest(lastIdNode.asLong(), CMD_OFFLINE_SYNC, 0xF0);
+        }
     }
 
     // ── heartbeat / send ─────────────────────────────────────────────────────
@@ -387,11 +416,6 @@ class HtImUpstreamConnector implements AutoCloseable {
     }
 
     // ── utilities ────────────────────────────────────────────────────────────
-
-    private static String textOr(JsonNode node, String field, String fallback) {
-        JsonNode n = node.get(field);
-        return (n != null && !n.isNull()) ? n.asText() : fallback;
-    }
 
     private static String toHex(byte[] bytes) {
         StringBuilder hex = new StringBuilder();

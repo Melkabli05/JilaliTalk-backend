@@ -84,6 +84,14 @@ public sealed interface ImRealtimeEvent permits
 
     record Follow(String userId, String nickname, String headUrl, int status) implements ImRealtimeEvent {} // 1 = followed you, 2 = followed back
 
+    /**
+     * Reserved for API back-compat with the frontend's {@code 'group_message'} union variant
+     * ({@code im-events.ts:28}). The current pipeline no longer emits this — group-DM sync
+     * frames are routed through the same F2 decoder as 1:1 DMs and produce standard
+     * {@link TextMessage}/{@link ImageMessage}/etc. events with {@code msg_type} preserved. Kept
+     * in the union so existing frontend switches don't break; safe to remove once the frontend
+     * drops the variant.
+     */
     record GroupMessage(String senderId, String senderName, String roomName, String text) implements ImRealtimeEvent {}
 
     record TypingIndicator(String fromUserId, boolean isTyping) implements ImRealtimeEvent {}
