@@ -49,8 +49,12 @@ class ImSendControllerTest {
 
         JsonNode i = msg.path("introduction");
         assertEquals(42, i.path("user_id").asInt());
-        assertEquals("Bob", i.path("nickname").asText());
-        assertEquals("MA", i.path("nationality").asText());
+        assertEquals("Bob", i.path("nick_name").asText());
+        assertEquals("MA", i.path("country").asText());
+        assertEquals(42, i.path("user_profile").path("user_id").asInt());
+        assertEquals("Bob", i.path("user_profile").path("nick_name").asText());
+        assertEquals("MA", i.path("user_profile").path("country").asText());
+        assertEquals("Alice", i.path("sender_nick").asText());
         assertEquals(0, msg.path("bubble").path("id").asInt());
         assertFalse(msg.has("source"), "introduction must not carry a source field");
     }

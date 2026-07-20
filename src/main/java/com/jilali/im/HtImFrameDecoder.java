@@ -114,7 +114,10 @@ final class HtImFrameDecoder {
             byte[] inflated = HtImPacketFramer.inflate(payload);
             if (inflated != null) payload = inflated;
         }
-        return payload.length >= 6 && ((payload[4] & 0xFF) | ((payload[5] & 0xFF) << 8)) == 1;
+        if (payload.length >= 6) {
+            return ((payload[4] & 0xFF) | ((payload[5] & 0xFF) << 8)) == 1;
+        }
+        return true; // reference client's default for an unparseably-short body
     }
 
     Optional<OfflinePacket> decodeOfflinePacket(String base64, byte[] sessionKey) {
@@ -197,34 +200,33 @@ final class HtImFrameDecoder {
             return Optional.of(new MessageAckView("", 0L, 0));
         }
 
-        // Path 1: strict sequential layout. Try BE strLen first, fall back to LE.
+        // Path 1: strict sequential layout, matching decodeCmd16386 exactly. lenField counts
+        // the prefix byte itself (lenField = 1 + msgId.length), so the string runs [3, 2+lenField)
+        // and the sequence starts at 2+lenField, NOT 3+lenField.
         try {
-            java.nio.ByteBuffer buf = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN);
-            int lenBE = buf.getShort(0) & 0xFFFF;
-            int lenLE = raw.length >= 2 ? (java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.BIG_ENDIAN).getShort(0) & 0xFFFF) : 0;
+            java.nio.ByteBuffer beView = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.BIG_ENDIAN);
+            java.nio.ByteBuffer leView = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            int lenBE = beView.getShort(0) & 0xFFFF;
+            int lenLE = leView.getShort(0) & 0xFFFF;
 
             int strLen = lenBE;
             if (2 + lenBE > raw.length && 2 + lenLE <= raw.length) {
                 strLen = lenLE;
-            } else if (2 + lenBE > raw.length) {
-                strLen = -1; // neither endianness fits
             }
 
             if (strLen > 0 && 2 + strLen <= raw.length) {
                 int prefix = raw[2] & 0xFF;
-                String strVal = stripNulls(Arrays.copyOfRange(raw, 3, 3 + strLen)).trim();
+                String strVal = stripNulls(Arrays.copyOfRange(raw, 3, 2 + strLen)).trim();
                 long sequence = 0L;
-                int nextOffset = 3 + strLen;
+                int nextOffset = 2 + strLen;
                 if (nextOffset < raw.length && raw[nextOffset] == 0) nextOffset++;
                 int sequenceBytes = raw.length - nextOffset;
                 if (sequenceBytes >= 8) {
-                    sequence = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                        .getLong(nextOffset) & 0xFFFFFFFFFFFFFFFFL;
+                    sequence = leView.getLong(nextOffset);
                 } else if (sequenceBytes >= 4) {
-                    sequence = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                        .getInt(nextOffset) & 0xFFFFFFFFL;
+                    sequence = leView.getInt(nextOffset) & 0xFFFFFFFFL;
                 }
-                if (!strVal.isEmpty()) {
+                if (UUID_PATTERN.matcher(strVal).find()) {
                     return Optional.of(new MessageAckView(strVal, sequence, prefix));
                 }
             }

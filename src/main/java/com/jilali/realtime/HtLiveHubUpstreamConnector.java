@@ -47,6 +47,11 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     private volatile WebSocket ws;
     private volatile Session session;
     private volatile boolean intentionalClose;
+    /** Tracks whether {@link RoomRealtimeEvent.ConnectionState}("connected") has been emitted
+     *  for the current connection attempt — distinct from {@code session.connected}, which
+     *  flips true as soon as the raw socket opens (used to gate sends), not once the upstream
+     *  has actually answered with its first heartbeat_sec push. */
+    private volatile boolean announcedConnected;
 
     public HtLiveHubUpstreamConnector(HtNotifyMapper mapper, ObjectMapper om) {
         this.mapper = mapper;
@@ -61,6 +66,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     public CompletableFuture<Void> connect(String userId, String cname, boolean isVisitor) {
         this.session = new Session(Long.parseLong(userId), cname, isVisitor, 60, false);
         this.intentionalClose = false;
+        this.announcedConnected = false;
         return attemptConnect();
     }
 
@@ -155,6 +161,14 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
                     sendHeartbeat();
                     long delaySec = Math.max(1, hbSec - 5);
                     heartbeat.start(Duration.ofSeconds(delaySec), Duration.ofSeconds(hbSec), this::sendHeartbeat);
+                    // The first heartbeat_sec push is the earliest point we know the server is
+                    // actually talking back to us — sock.onopen only confirms the TCP/WS
+                    // handshake, not that the upstream accepted the connection.
+                    if (!announcedConnected) {
+                        announcedConnected = true;
+                        Consumer<RoomRealtimeEvent> l = eventListener;
+                        if (l != null) l.accept(new RoomRealtimeEvent.ConnectionState("connected"));
+                    }
                 },
                 () -> {
                     if (mapper.isHeartbeatResponse(text)) {

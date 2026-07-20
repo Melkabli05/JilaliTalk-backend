@@ -123,7 +123,9 @@ public class ImSendController {
             gift.put("user_size", 1);
             gift.put("is_select_all", 0);
             gift.put("view_size", 1);
-            gift.put("diamond_val", g.diamondVal());
+            // IMSendGiftBean declares diamondVal as a String field on the wire (APK-confirmed
+            // via its @SerializedName annotation), not a number.
+            gift.put("diamond_val", String.valueOf(g.diamondVal()));
             gift.put("finish_wish", false);
             gift.put("is_birthday_gift", false);
             gift.put("have_birthday_user", true);
@@ -146,10 +148,17 @@ public class ImSendController {
         msg.put("msg_type", body.kind());
         switch (body.kind()) {
             case "text" -> {
+                // IMTextBean's confirmed wire fields (APK @SerializedName) are is_gift_word/
+                // message_id/text; reportIndex/reportText are kept alongside since dropping
+                // an unconfirmed-but-possibly-load-bearing field is riskier than a harmless
+                // extra one a Gson receiver ignores.
+                String text = body.text() != null ? body.text() : "";
                 msg.put("text", Map.of(
                     "reportIndex", 0,
                     "reportText", "",
-                    "text", body.text() != null ? body.text() : ""));
+                    "is_gift_word", 0,
+                    "message_id", msgId,
+                    "text", text));
                 msg.put("source", "Chat List");
             }
             case "image" -> {
@@ -167,16 +176,25 @@ public class ImSendController {
             case "voice_room" -> msg.put("voice_room", body.roomData());
             case "live_link"  -> msg.put("live_link", body.roomData());
             case "introduction" -> {
+                // Shape confirmed directly from the APK's IMIntroductionBean/UserProfile
+                // classes (Gson @SerializedName on the actual fields): introduction =
+                // {receiver_nick, sender_nick, user_profile: {user_id, nick_name, head_url,
+                // sex, age, country, ...}} — also mirrored flat for older/alternate servers,
+                // since unrecognized extra JSON fields are harmless to a Gson-based receiver.
                 IntroductionRequest i = body.introduction();
                 if (i == null) throw new IOException("introduction requires an introduction payload");
-                Map<String, Object> intro = new LinkedHashMap<>();
-                intro.put("user_id", i.userId());
-                intro.put("nickname", i.nickname());
-                intro.put("head_url", i.headUrl() != null ? i.headUrl() : "");
-                intro.put("sex", i.sex() != null ? i.sex() : "");
-                intro.put("age", i.age() != null ? i.age() : 0);
-                intro.put("nationality", i.nationality() != null ? i.nationality() : "");
-                intro.put("bio", i.bio() != null ? i.bio() : "");
+                Map<String, Object> profile = new LinkedHashMap<>();
+                profile.put("user_id", i.userId());
+                profile.put("nick_name", i.nickname());
+                profile.put("head_url", i.headUrl() != null ? i.headUrl() : "");
+                profile.put("sex", i.sex() != null ? i.sex() : "");
+                profile.put("age", i.age() != null ? i.age() : 0);
+                profile.put("country", i.nationality() != null ? i.nationality() : "");
+
+                Map<String, Object> intro = new LinkedHashMap<>(profile);
+                intro.put("user_profile", profile);
+                intro.put("receiver_nick", "");
+                intro.put("sender_nick", fromNickname != null ? fromNickname : "");
                 msg.put("introduction", intro);
                 msg.put("bubble", Map.of("id", 0));
             }

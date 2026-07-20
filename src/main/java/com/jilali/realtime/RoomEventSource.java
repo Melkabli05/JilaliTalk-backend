@@ -28,6 +28,10 @@ public class RoomEventSource {
     private final Map<String, Sinks.Many<RoomRealtimeEvent>> sinks = new ConcurrentHashMap<>();
     /** Per-room audience roster revision — incremented on every event that changes the roster so clients can skip unnecessary refetches. */
     private final Map<String, AtomicInteger> audienceRevisions = new ConcurrentHashMap<>();
+    /** Last connection-state per room, so a subscriber joining after the upstream is already
+     *  connected (e.g. a second browser tab on the same room) gets the current state
+     *  immediately instead of waiting for a transition that already happened. */
+    private final Map<String, RoomRealtimeEvent.ConnectionState> lastConnectionState = new ConcurrentHashMap<>();
 
     public RoomEventSource(HtNotifyMapper mapper, JilaliProperties properties, ObjectMapper om) {
         this.mapper = mapper;
@@ -46,12 +50,14 @@ public class RoomEventSource {
 
             Sinks.Many<RoomRealtimeEvent> sink = sinkFor(cname);
             upstream.attach(
-                event -> emitWithRevisionBump(cname, event),
+                event -> emitAndTrackState(cname, event),
                 () -> {
                     log.info("RoomEventSource: upstream disconnected for cname='{}'", cname);
                     sink.tryEmitComplete();
                 }
             );
+
+            emitAndTrackState(cname, new RoomRealtimeEvent.ConnectionState("connecting"));
 
             upstream.connect(connectorUserId, cname, true)
                 .exceptionally(ex -> {
@@ -62,9 +68,19 @@ public class RoomEventSource {
                 });
 
             log.info("RoomEventSource: opened upstream for cname='{}'", cname);
+            return sink.asFlux();
         }
 
-        return sinkFor(cname).asFlux();
+        RoomRealtimeEvent.ConnectionState state = lastConnectionState.getOrDefault(
+            cname, new RoomRealtimeEvent.ConnectionState("disconnected"));
+        return Flux.concat(Flux.just(state), sinkFor(cname).asFlux());
+    }
+
+    private void emitAndTrackState(String cname, RoomRealtimeEvent event) {
+        if (event instanceof RoomRealtimeEvent.ConnectionState cs) {
+            lastConnectionState.put(cname, cs);
+        }
+        emitWithRevisionBump(cname, event);
     }
 
     public void unsubscribe(String cname) {
@@ -81,6 +97,7 @@ public class RoomEventSource {
             // Safe to drop: clients always reset their local revision to -1 on join, so a
             // revisited room simply starts counting from 0 again instead of leaking forever.
             audienceRevisions.remove(cname);
+            lastConnectionState.remove(cname);
         }
     }
 

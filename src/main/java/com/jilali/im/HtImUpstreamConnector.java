@@ -165,18 +165,21 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     // ── packet dispatch ──────────────────────────────────────────────────────
 
+    /** Mirrors the reference client's {@code handleMessage} precedence exactly: cmdId==MSG_ACK
+     *  is checked BEFORE the flag switch (flag-agnostic — the ack-of-push only fires
+     *  conditionally inside {@link #handleMsgAck} when the frame was itself flag==PUSH), then
+     *  flag==PUSH, then flag==TYPING, then flag==RESPONSE. */
     private void handlePacket(byte[] data) {
         Header h = parseHeader(data);
         if (h == null) return;
 
         int payloadLen = Math.min(h.payloadLen(), Math.max(0, data.length - HEADER_LEN));
 
-        switch (h.packetType()) {
-            case PKT_RESPONSE -> handleF1(h, data, payloadLen);
-            case PKT_PUSH     -> handleF2(h, data, payloadLen);
-            case PKT_TYPING   -> handleTyping(h, data, payloadLen);
-            default           -> log.trace("IM: unknown packet type 0x{}", Integer.toHexString(h.packetType()));
-        }
+        if (h.cmdId() == CMD_MSG_ACK) { handleMsgAck(h, data, payloadLen); return; }
+        if (h.packetType() == PKT_PUSH) { handlePush(h, data, payloadLen); return; }
+        if (h.packetType() == PKT_TYPING && h.cmdId() == CMD_TYPING) { handleTyping(h, data, payloadLen); return; }
+        if (h.packetType() == PKT_RESPONSE) { handleF1(h, data, payloadLen); return; }
+        log.trace("IM: unhandled frame flag=0x{} cmdId={}", Integer.toHexString(h.packetType()), h.cmdId());
     }
 
     private void handleF1(Header h, byte[] data, int payloadLen) {
@@ -225,24 +228,22 @@ class HtImUpstreamConnector implements AutoCloseable {
         }
     }
 
-    private void handleF2(Header h, byte[] data, int payloadLen) {
-        // Always ACK first
+    /** MSG-ACK (cmdId 16386) confirms the upstream accepted an outbound DM. Body is short
+     *  binary ([u16 strLen][strVal UTF-8][u64 LE sequence]) — NOT a JSON push. The ack-of-ack
+     *  quirk (connectwebsock.js SendAck-before-parse) only fires when this arrived as a
+     *  flag==PUSH frame, matching the reference client exactly. */
+    private void handleMsgAck(Header h, byte[] data, int payloadLen) {
+        if (h.packetType() == PKT_PUSH) sendBinary(buildAck(data));
+        byte[] body = HtImPacketFramer.copyPayload(data, payloadLen);
+        decoder.decodeMsgAck(body).ifPresent(ack -> {
+            log.info("IM: MSG-ACK msgId={} sequence={} prefix=0x{}", ack.msgId(), ack.sequence(),
+                Integer.toHexString(ack.prefix()));
+            emit(new ImRealtimeEvent.MessageAck(ack.msgId(), ack.sequence(), ack.prefix()));
+        });
+    }
+
+    private void handlePush(Header h, byte[] data, int payloadLen) {
         sendBinary(buildAck(data));
-
-        // MSG-ACK (cmdId 16386) is the upstream's echo confirming it accepted an outbound
-        // DM we sent. Body is short binary ([u16 strLen][strVal UTF-8][u64 LE sequence]
-        // per connectwebsock.js decodeCmd16386) — NOT a JSON push. Route it before the
-        // first-byte decoder to avoid the JSON-discard path that notifyMapper would hit.
-        if (h.cmdId() == CMD_MSG_ACK) {
-            byte[] body = HtImPacketFramer.copyPayload(data, payloadLen);
-            decoder.decodeMsgAck(body).ifPresent(ack -> {
-                log.info("IM: MSG-ACK msgId={} sequence={} prefix=0x{}", ack.msgId(), ack.sequence(),
-                    Integer.toHexString(ack.prefix()));
-                emit(new ImRealtimeEvent.MessageAck(ack.msgId(), ack.sequence(), ack.prefix()));
-            });
-            return;
-        }
-
         F2Push push = decoder.decodeF2(data, payloadLen, sessionKey);
         dispatchPush(push, h);
     }
@@ -321,10 +322,12 @@ class HtImUpstreamConnector implements AutoCloseable {
         }
         log.info("IM: offline response {} packets, emitted {} events uid={}", packetList.size(), emitted, userId);
 
-        // Pagination: if the server returned items there may be more
-        long nextLastId = data.path("last_id").asLong(0);
-        if (packetList.size() > 0 && nextLastId > 0) {
-            sendOfflineSyncRequest(nextLastId, CMD_OFFLINE_SYNC_PAGE, 0xF2);
+        // Pagination: retrigger whenever packetList is non-empty and last_id is present as a
+        // number (including 0) — matches the reference client's `typeof lastId === 'number'`
+        // gate exactly, not a `> 0` truthiness check.
+        JsonNode lastIdNode = data.path("last_id");
+        if (packetList.size() > 0 && lastIdNode.isNumber()) {
+            sendOfflineSyncRequest(lastIdNode.asLong(), CMD_OFFLINE_SYNC_PAGE, 0xF2);
         }
     }
 

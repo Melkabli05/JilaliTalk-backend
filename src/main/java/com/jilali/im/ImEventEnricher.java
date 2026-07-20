@@ -91,7 +91,9 @@ public class ImEventEnricher {
         return resolveAsync(uid).map(info -> new ImRealtimeEvent.IntroductionMessage(
             i.fromUserId(),
             firstFilled(i.fromNickname(), info.nickname()),
-            firstFilled(i.fromHeadUrl(), headUrlOf(info))
+            firstFilled(i.fromHeadUrl(), headUrlOf(info)),
+            i.targetUserId(), i.targetNickname(), i.targetHeadUrl(),
+            i.targetSex(), i.targetAge(), i.targetNationality(), i.targetBio()
         ));
     }
 

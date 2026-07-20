@@ -100,20 +100,16 @@ final class HtImPacketFramer {
     }
 
     /**
-     * Build a read-receipt packet. {@code toId} is the *peer* user we are confirming we've read
-     * {@code msgId} from — the recipient the upstream server then fan-outs back to.
-     * Body is {@code [0x25][0x00][msgId utf-8 bytes][NUL-padding up to 36 bytes]} = 38 bytes,
-     * matching the layout the legacy frontend's {@code sendReadReceipt} produced (see
-     * {@code decodeOfflinePacket}'s {@code 0x25} branch for the upstream mirror).
+     * Build a read-receipt packet. Body is {@code [0x25][0x00][msgId utf-8 bytes][0x00][0x00]}
+     * — variable length (2 + msgId.length + 2), matching {@code prvgmsgpacket.js}'s
+     * {@code sendReadReceipt} exactly (not padded/truncated to a fixed 36-byte slot).
      */
     static byte[] buildReadReceipt(long fromId, long toId, String msgId) {
         byte[] msgIdBytes = msgId.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] body = new byte[2 + 36];
+        byte[] body = new byte[2 + msgIdBytes.length + 2];
         body[0] = 0x25;
         body[1] = 0x00;
-        int copyLen = Math.min(msgIdBytes.length, 36);
-        System.arraycopy(msgIdBytes, 0, body, 2, copyLen);
-        // remaining bytes are 0 (NUL) by default — the upstream decoder strips trailing NULs.
+        System.arraycopy(msgIdBytes, 0, body, 2, msgIdBytes.length);
         return buildPacket(fromId, toId, CMD_READ_RECEIPT, 0xF0, body);
     }
 

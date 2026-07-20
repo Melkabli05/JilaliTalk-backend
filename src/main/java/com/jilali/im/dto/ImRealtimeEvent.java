@@ -56,11 +56,15 @@ public sealed interface ImRealtimeEvent permits
 
     record GiftMessage(String fromUserId, String fromNickname, String fromHeadUrl, long giftId, int count) implements ImRealtimeEvent {}
 
-    record IntroductionMessage(String fromUserId, String fromNickname, String fromHeadUrl) implements ImRealtimeEvent {}
+    record IntroductionMessage(
+        String fromUserId, String fromNickname, String fromHeadUrl,
+        String targetUserId, String targetNickname, String targetHeadUrl,
+        String targetSex, Integer targetAge, String targetNationality, String targetBio
+    ) implements ImRealtimeEvent {}
 
-    record VoiceRoomShared(String fromNickname, String cname, String headUrl, Integer count) implements ImRealtimeEvent {}
+    record VoiceRoomShared(String fromUserId, String fromNickname, String cname, String headUrl, Integer count) implements ImRealtimeEvent {}
 
-    record LiveRoomShared(String fromNickname, String cname, String headUrl) implements ImRealtimeEvent {}
+    record LiveRoomShared(String fromUserId, String fromNickname, String cname, String headUrl) implements ImRealtimeEvent {}
 
     record ProfileVisit(String visitorUserId, String nickname, String headUrl) implements ImRealtimeEvent {}
 

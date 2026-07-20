@@ -38,6 +38,11 @@ public class ImEventSource {
     private final AtomicInteger subscriberCount = new AtomicInteger(0);
     private volatile HtImUpstreamConnector connector;
     private volatile Sinks.Many<ImRealtimeEvent> sink;
+    /** Last connection-state event seen, so a subscriber joining after the upstream is already
+     *  connected (e.g. a second browser tab) gets the current state immediately instead of
+     *  waiting for a state transition that already happened before it subscribed. */
+    private volatile ImRealtimeEvent.ConnectionState lastConnectionState =
+        new ImRealtimeEvent.ConnectionState("disconnected");
 
     public ImEventSource(JilaliProperties properties, ObjectMapper om, ImEventEnricher enricher) {
         this.jwt         = properties.defaultAuthToken();
@@ -61,14 +66,14 @@ public class ImEventSource {
             upstream.attach(
                 // ImEventEnricher.enrich() never errors — it falls back to emitting the raw event
                 // on lookup failure, so the wire always sees exactly one event per upstream push.
-                event -> enricher.enrich(event).subscribe(newSink::tryEmitNext),
+                event -> enricher.enrich(event).subscribe(this::emitAndTrackState),
                 () -> {
                     log.info("ImEventSource: upstream disconnected");
                     newSink.tryEmitComplete();
                 }
             );
 
-            newSink.tryEmitNext(new ImRealtimeEvent.ConnectionState("connecting"));
+            emitAndTrackState(new ImRealtimeEvent.ConnectionState("connecting"));
 
             upstream.connect().exceptionally(ex -> {
                 log.error("ImEventSource: upstream connection failed: {}", ex.getMessage());
@@ -78,9 +83,18 @@ public class ImEventSource {
             });
 
             log.info("ImEventSource: opened upstream uid={}", userId);
+            return sink.asFlux();
         }
 
-        return sink.asFlux();
+        return Flux.concat(Flux.just(lastConnectionState), sink.asFlux());
+    }
+
+    private void emitAndTrackState(ImRealtimeEvent event) {
+        if (event instanceof ImRealtimeEvent.ConnectionState cs) {
+            lastConnectionState = cs;
+        }
+        Sinks.Many<ImRealtimeEvent> s = sink;
+        if (s != null) s.tryEmitNext(event);
     }
 
     public void unsubscribe() {
@@ -92,6 +106,7 @@ public class ImEventSource {
             if (c != null) { connector = null; c.close(); }
             Sinks.Many<ImRealtimeEvent> s = sink;
             if (s != null) { sink = null; s.tryEmitComplete(); }
+            lastConnectionState = new ImRealtimeEvent.ConnectionState("disconnected");
         }
     }
 

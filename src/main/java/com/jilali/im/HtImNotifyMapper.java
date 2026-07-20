@@ -29,7 +29,7 @@ final class HtImNotifyMapper {
                 default                  -> null;
             };
         }
-        if (root.has("notify_type")) return mapNotify(root);
+        if (root.has("notify_type")) return mapNotify(root, h);
         return null;
     }
 
@@ -62,23 +62,66 @@ final class HtImNotifyMapper {
         return new ImRealtimeEvent.GiftMessage(fromId, fromNickname, fromHeadUrl, giftId, count);
     }
 
+    /**
+     * The target profile arrives nested under {@code introduction.user_profile} — confirmed
+     * directly from the APK's {@code IMIntroductionBean$UserProfile} class (Gson
+     * {@code @SerializedName} annotations on the actual fields: {@code user_id}, {@code
+     * nick_name}, {@code head_url}, {@code sex} (Integer), {@code age}, {@code country} — there
+     * is no {@code nationality} or {@code bio} field on this class at all, unlike earlier
+     * client code assumed). {@code profileNode} still falls back to a flat {@code introduction}
+     * shape defensively in case a legacy/alternate server build sends it un-nested.
+     */
     private ImRealtimeEvent mapIntro(JsonNode root, Header h) {
         String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
         String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
         String fromHeadUrl  = textOr(root, "from_head_url", textOr(root, "head_url", ""));
-        return new ImRealtimeEvent.IntroductionMessage(fromId, fromNickname, fromHeadUrl);
+
+        JsonNode intro = root.path("introduction");
+        JsonNode profile = intro.path("user_profile");
+        JsonNode profileNode = profile.isMissingNode() || profile.isNull() ? intro : profile;
+
+        String targetUserId = textOr(profileNode, "user_id", "");
+        if (targetUserId.isEmpty()) return null;
+
+        return new ImRealtimeEvent.IntroductionMessage(
+            fromId, fromNickname, fromHeadUrl,
+            targetUserId,
+            textOr(profileNode, "nick_name", textOr(profileNode, "nickname", "")),
+            nullableText(profileNode, "head_url"),
+            nullableAny(profileNode, "sex"),
+            profileNode.hasNonNull("age") ? profileNode.path("age").asInt() : null,
+            nullableText(profileNode, "country", "nationality"),
+            nullableText(profileNode, "bio"));
     }
 
-    private ImRealtimeEvent mapNotify(JsonNode root) {
+    /** Like {@link #nullableText}, but converts non-string JSON values (e.g. {@code sex} is an
+     *  Integer on the wire per the APK's UserProfile class) instead of treating them as absent. */
+    private static String nullableAny(JsonNode node, String field) {
+        JsonNode n = node.get(field);
+        return (n != null && !n.isNull()) ? n.asText() : null;
+    }
+
+    private static String nullableText(JsonNode node, String field, String fallbackField) {
+        String v = nullableText(node, field);
+        return v != null ? v : nullableText(node, fallbackField);
+    }
+
+    private static String nullableText(JsonNode node, String field) {
+        JsonNode n = node.get(field);
+        return (n != null && n.isTextual()) ? n.asText() : null;
+    }
+
+    private ImRealtimeEvent mapNotify(JsonNode root, Header h) {
         if (root.has("cname")) {
+            String fromId        = textOr(root, "from_id", String.valueOf(h.fromId()));
             String cname        = textOr(root, "cname", "");
             String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
             String headUrl      = root.path("head_url").isNull() ? null : textOr(root, "head_url", null);
             if (root.has("count") || root.has("voice_count")) {
                 int cnt = root.has("count") ? root.path("count").asInt(0) : root.path("voice_count").asInt(0);
-                return new ImRealtimeEvent.VoiceRoomShared(fromNickname, cname, headUrl, cnt);
+                return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, cnt);
             }
-            return new ImRealtimeEvent.LiveRoomShared(fromNickname, cname, headUrl);
+            return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl);
         }
 
         JsonNode info = root.path("notify_info");
