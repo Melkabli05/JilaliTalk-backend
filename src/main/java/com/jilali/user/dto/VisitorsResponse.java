@@ -30,7 +30,7 @@ public record VisitorsResponse(
         @JsonProperty("head_url") String headUrl,
         @Nullable String birthday,
         int sex,
-        int nativeLang,
+        @JsonProperty("native_lang") int nativeLang,
         @JsonProperty("visit_ts") long visitTs,
         @JsonProperty("visit_cnt") int visitCnt,
         @JsonProperty("is_secret_visit") boolean isSecretVisit,

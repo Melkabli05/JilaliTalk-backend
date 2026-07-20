@@ -5,17 +5,21 @@ import io.micronaut.serde.annotation.Serdeable;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Request body for POST /user_profile_visitor/v2/my_history.
- * Forwarded from the frontend device client fields.
+ * Request body for POST /user_profile_visitor/v2/my_history. Field names are explicit
+ * {@code @JsonProperty} (this codebase doesn't configure a global naming strategy — see
+ * {@code ProfileClient.VisitBody}'s doc for the same pattern); without them Serde emits
+ * camelCase keys the real upstream silently ignores, confirmed against a live captured
+ * request body: {@code {"device_type","client_ts","index","device_id","sign","client_ver",
+ * "update_ts","client_os"}}.
  */
 @Serdeable
 public record VisitorHistoryRequest(
-    @Nullable String deviceType,
-    @Nullable Long clientTs,
+    @JsonProperty("device_type") @Nullable String deviceType,
+    @JsonProperty("client_ts") @Nullable Long clientTs,
     int index,
-    @Nullable String deviceId,
+    @JsonProperty("device_id") @Nullable String deviceId,
     @Nullable String sign,
-    @Nullable String clientVer,
-    int updateTs,
-    int clientOs
+    @JsonProperty("client_ver") @Nullable String clientVer,
+    @JsonProperty("update_ts") int updateTs,
+    @JsonProperty("client_os") int clientOs
 ) {}
