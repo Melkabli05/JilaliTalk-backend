@@ -13,9 +13,12 @@ import com.jilali.room.dto.CreateVoiceChannelRequest;
 import com.jilali.room.dto.CreateVoiceChannelResponse;
 import com.jilali.room.dto.EndChannelRequest;
 import com.jilali.room.dto.JoinBundleResponse;
+import com.jilali.room.dto.AudienceReconcileResponse;
+import com.jilali.realtime.RoomEventSource;
 import com.jilali.room.dto.LanguageGroup;
 import com.jilali.room.dto.UpdateVoiceChannelRequest;
 import com.jilali.room.dto.VoiceRoomInfoResponse;
+import com.jilali.user.dto.RoomUserListRequest;
 import io.micronaut.cache.annotation.Cacheable;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -48,14 +51,16 @@ public class RoomController {
     private final JilaliClient client;
     private final JilaliProperties properties;
     private final RoomJoinService roomJoinService;
+    private final RoomEventSource roomEventSource;
     private final RoomsSearchService roomsSearchService;
 
     public RoomController(JilaliClient client, JilaliProperties properties,
-                          RoomJoinService roomJoinService,
+                          RoomJoinService roomJoinService, RoomEventSource roomEventSource,
                           RoomsSearchService roomsSearchService) {
         this.client = client;
         this.properties = properties;
         this.roomJoinService = roomJoinService;
+        this.roomEventSource = roomEventSource;
         this.roomsSearchService = roomsSearchService;
     }
 
@@ -177,12 +182,39 @@ public class RoomController {
      * ({@code doRefreshRoomCore}), and its invisible→visible toggle ({@code makeVisible}) all
      * call this instead of {@code /voice}, {@code /live}, {@code /stage/list},
      * {@code /users/rooms/list}, and {@code /comments} individually.
+     *
+     * <p>Deliberately <em>not</em> used by the audience-reconciliation poll in the frontend's
+     * {@code AudienceStore} — that only needs a roster refresh, so pulling in room info + stage +
+     * comments on every drift-corrected poll would waste three upstream calls per check. That
+     * poll uses {@link #audienceReconcile} instead.
      */
     @Get("/{cname}/join-bundle")
     public JoinBundleResponse joinBundle(
             String cname,
             @QueryValue(defaultValue = "2") int busiType) {
         return roomJoinService.joinBundle(cname, busiType);
+    }
+
+    /**
+     * One round trip for the frontend's 30-second audience-drift-correction poll. Every 30s
+     * {@code AudienceStore} sends its last-known revision as {@code sinceRevision}; if the
+     * server-side revision (see {@link RoomEventSource#audienceRevision}) hasn't moved, this
+     * returns immediately with {@code changed=false} and makes no upstream call at all. Only a
+     * real roster change costs an upstream {@code roomUserList} round trip. Replaces the
+     * previous two-call sequence (a revision check followed by a conditional full refetch).
+     */
+    @Get("/{cname}/audience-reconcile")
+    public AudienceReconcileResponse audienceReconcile(
+            String cname,
+            @QueryValue(defaultValue = "2") int busiType,
+            @QueryValue(defaultValue = "-1") int sinceRevision) {
+        int revision = roomEventSource.audienceRevision(cname);
+        if (revision <= sinceRevision) {
+            return new AudienceReconcileResponse(revision, false, null);
+        }
+        var roster = JilaliResponses.unwrap(
+                client.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType)));
+        return new AudienceReconcileResponse(revision, true, roster.list());
     }
 
     /**
