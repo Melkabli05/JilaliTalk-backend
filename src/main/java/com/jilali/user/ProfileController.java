@@ -1,8 +1,11 @@
 package com.jilali.user;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.client.ProfileClient;
 import com.jilali.core.JilaliProperties;
+import com.jilali.core.UidExtractor;
 import com.jilali.crypto.ApkSignatureGenerator;
+import com.jilali.crypto.Md5Util;
 import com.jilali.user.dto.BlockListResponse;
 import com.jilali.user.dto.FollowRequest;
 import com.jilali.user.dto.FollowResultResponse;
@@ -46,11 +49,13 @@ public class ProfileController {
     private final ProfileClient profileClient;
     private final ProfileBundleService bundleService;
     private final JilaliProperties properties;
+    private final long callerUserId;
 
-    public ProfileController(ProfileClient profileClient, ProfileBundleService bundleService, JilaliProperties properties) {
+    public ProfileController(ProfileClient profileClient, ProfileBundleService bundleService, JilaliProperties properties, ObjectMapper om) {
         this.profileClient = profileClient;
         this.bundleService = bundleService;
         this.properties = properties;
+        this.callerUserId = UidExtractor.uidAsLong(properties.defaultAuthToken(), om);
     }
 
     @Get("/me")
@@ -142,24 +147,27 @@ public class ProfileController {
     }
 
     /**
-     * The upstream ties visitor-history results to a device it recognizes for this account
-     * (same device_id the IM login handshake already established, {@code DeviceIdStore})
-     * — a request carrying an unrecognized device_id (e.g. a browser-generated placeholder)
-     * comes back {@code 200 "no data currently"} instead of a real list or an error, so this
-     * can't be left as a frontend-supplied field. Only {@code index} (pagination cursor) is
-     * genuinely caller-controlled; everything else about "who we are" is this BFF's own
-     * identity, matching how the IM login packet is built.
+     * The real blocker here (confirmed live via TRACE-level upstream response capture, not
+     * assumed) is a missing {@code sign} field — the upstream rejects an unsigned request with
+     * {@code {"code":400,"msg":"no data currently"}}, a deliberately misleading message that
+     * reads like "you have zero visitors" but actually means "this request isn't authenticated."
+     * {@code sign = MD5(jid + jid + client_ts).toLowerCase()} where {@code jid} is this BFF's
+     * own account uid — see {@link Md5Util#visitorHistorySign} for the full smali citation.
+     * The smali also sends the same {@code client_ts} value in {@code update_ts}, not {@code 0}.
+     * Only {@code index} (pagination cursor) is genuinely caller-controlled; everything else
+     * about "who we are" is this BFF's own identity, matching how the IM login packet is built.
      */
     @Post("/visitors")
     public VisitorsResponse visitors(@Body VisitorHistoryRequest body) {
+        long clientTs = System.currentTimeMillis();
         var identifiedBody = new VisitorHistoryRequest(
             properties.deviceModel(),
-            System.currentTimeMillis(),
+            clientTs,
             body.index(),
             properties.deviceId(),
-            null,
+            Md5Util.visitorHistorySign(callerUserId, clientTs),
             ApkSignatureGenerator.VERSION_NAME,
-            0,
+            clientTs,
             0
         );
         return profileClient.visitors(identifiedBody);

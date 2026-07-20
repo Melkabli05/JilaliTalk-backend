@@ -82,6 +82,31 @@ public final class Md5Util {
         return md5Hex(data);
     }
 
+    /**
+     * Computes the {@code sign} field HelloTalk's {@code /user_profile_visitor/v2/my_history}
+     * and {@code /user_profile_visitor/v3/visit} endpoints require: {@code MD5(jid + jid +
+     * client_ts).toLowerCase()} — the caller's own numeric account id concatenated with itself
+     * (no separator), followed once by the corrected client timestamp in epoch ms.
+     *
+     * <p>Verified directly against smali: {@code my_history}'s sign is built in
+     * {@code bq0/c.smali} lines 1007-1049 ({@code StringBuilder().append(String.valueOf(jid))
+     * .append(jid).append(client_ts)} -&gt; {@code StringUtils.MD5(...)} -&gt; {@code
+     * .toLowerCase()}); the sibling {@code visit} endpoint computes the byte-identical
+     * concatenation in {@code bq0/g.smali} lines 190-270. {@code jid} is the account's own uid
+     * (smali {@code ge/a.smali} field {@code b}, populated from the {@code "jid"} SharedPreferences
+     * key at login) — not the target/visitor uid. A request that omits this field (or gets it
+     * wrong) is rejected by the real upstream with {@code {"code":400,"msg":"no data currently"}}
+     * — a genuinely misleading error message that looks like "you have zero visitors" but is
+     * actually "your request wasn't authenticated correctly."
+     *
+     * @param jid       the account's own numeric uid (not the target user's).
+     * @param clientTs  epoch-ms timestamp — must be sent as-is in the request's own
+     *                  {@code client_ts} (and, per the smali, also {@code update_ts}) fields.
+     */
+    public static String visitorHistorySign(long jid, long clientTs) {
+        return md5Hex(String.valueOf(jid) + jid + clientTs);
+    }
+
     private static String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);
         for (byte b : bytes) {
