@@ -26,9 +26,9 @@ final class HtImPacketFramer {
     static final int CMD_MSG_ACK          = 16386;  // 0x4002 — server MSG-ACK echo of our outbound DM (delivery receipt)
     static final int CMD_TYPING           = 16407;  // 0x4017 — typing push
     static final int CMD_PRIVATE_MSG      = 16385;  // 0x4001 — 1:1 private text/image/introduction/gift/voice_room/live_link message sender
-    static final int CMD_READ_RECEIPT     = 16405;  // 0x4015 — read-receipt sender (also reused for offline-page sync — see CMD_OFFLINE_SYNC_PAGE)
-    static final int CMD_OFFLINE_SYNC      = 29967; // 0x750F — request offline DMs (group msgs)
-    static final int CMD_OFFLINE_SYNC_PAGE = 16453; // 0x4015 — paginate / request DM offline msgs (note: same opcode as CMD_READ_RECEIPT; upstream packet body disambiguates)
+    static final int CMD_READ_RECEIPT     = 16405;  // 0x4015 — read-receipt sender (verified in prvgmsgpacket.js:30 + OfflineSingleChatRequest.smali cmdId mapping)
+    static final int CMD_OFFLINE_SYNC      = 29967; // 0x750F — initial offline-sync trigger (request offline DMs / group msgs)
+    static final int CMD_OFFLINE_SYNC_PAGE = 16453; // 0x4045 — paginated offline-sync request (OfflineSingleChatRequest.smali cmdId() == 0x4045; response fields data.last_id / data.has_more / data.packet_list per OfflineSingleChatRequest.generateResult)
     static final int CMD_OFFLINE_RESPONSE  = 16454; // 0x4016 — offline DM response
     static final int CMD_GROUP_RESPONSE    = 29968; // 0x7510 — group/room message sync response
 
@@ -100,17 +100,32 @@ final class HtImPacketFramer {
     }
 
     /**
-     * Build a read-receipt packet. Body is {@code [0x25][0x00][msgId utf-8 bytes][0x00][0x00]}
-     * — variable length (2 + msgId.length + 2), matching {@code prvgmsgpacket.js}'s
-     * {@code sendReadReceipt} exactly (not padded/truncated to a fixed 36-byte slot).
+     * Build a read-receipt packet. Body layout matches the real Android client's
+     * {@code HasReadRequest.smali.generateContentData()} (re_output apktool_out), NOT the
+     * legacy {@code prvgmsgpacket.js} shim — the JS shim omits the chatType field and uses an
+     * entirely different framing:
+     * <pre>
+     *   [2-byte LE length prefix = (msgId.utf8_len + 1) cast to short]
+     *   [msgId UTF-8 bytes]
+     *   [1-byte 0x00 terminator]
+     *   [4-byte LE chatType int]
+     * </pre>
+     * The length prefix is written by {@code ServerSocketRequest.writeString()} (re_output
+     * smali_classes12) which {@code mx.a.i0(S)} proves is little-endian — same convention as
+     * the 20-byte packet header. {@code chatType} is 1 for 1:1 DM (the {@code ImSendController}
+     * default); upstream client uses 2 for group/voice-room contexts we don't yet send.
      */
-    static byte[] buildReadReceipt(long fromId, long toId, String msgId) {
+    static byte[] buildReadReceipt(long fromId, long toId, String msgId, int chatType) {
         byte[] msgIdBytes = msgId.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] body = new byte[2 + msgIdBytes.length + 2];
-        body[0] = 0x25;
-        body[1] = 0x00;
-        System.arraycopy(msgIdBytes, 0, body, 2, msgIdBytes.length);
-        return buildPacket(fromId, toId, CMD_READ_RECEIPT, 0xF0, body);
+        // +1 in the length prefix reserves the slot for the trailing 0x00 terminator that
+        // writeString() also appends, per ServerSocketRequest.smali lines 239-261.
+        short len = (short) (msgIdBytes.length + 1);
+        java.nio.ByteBuffer body = java.nio.ByteBuffer.allocate(2 + msgIdBytes.length + 1 + 4).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        body.putShort(len);
+        body.put(msgIdBytes);
+        body.put((byte) 0x00); // terminator
+        body.putInt(chatType);
+        return buildPacket(fromId, toId, CMD_READ_RECEIPT, 0xF0, body.array());
     }
 
     /**

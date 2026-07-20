@@ -322,11 +322,16 @@ class HtImUpstreamConnector implements AutoCloseable {
         }
         log.info("IM: offline response {} packets, emitted {} events uid={}", packetList.size(), emitted, userId);
 
-        // Pagination: retrigger whenever packetList is non-empty and last_id is present as a
-        // number (including 0) — matches the reference client's `typeof lastId === 'number'`
-        // gate exactly, not a `> 0` truthiness check.
+        // Pagination: the real Android app's OfflineSingleChatRequest.generateResult()
+        // (re_output apktool_out) gates the next page strictly on an explicit `has_more`
+        // integer field in `data`, not on whether this response's packet_list happened to be
+        // non-empty — a full-but-final page (has_more=0) would otherwise incorrectly trigger
+        // one more (empty) round trip, and a `has_more=1` page that happened to arrive with an
+        // empty packet_list would otherwise incorrectly stop pagination early. last_id must
+        // still be present as a number (including 0) to know what cursor to page from.
         JsonNode lastIdNode = data.path("last_id");
-        if (packetList.size() > 0 && lastIdNode.isNumber()) {
+        boolean hasMore = data.has("has_more") ? data.path("has_more").asInt(0) != 0 : packetList.size() > 0;
+        if (hasMore && lastIdNode.isNumber()) {
             sendOfflineSyncRequest(lastIdNode.asLong(), CMD_OFFLINE_SYNC_PAGE, 0xF2);
         }
     }

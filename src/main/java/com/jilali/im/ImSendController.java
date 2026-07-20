@@ -59,8 +59,9 @@ public class ImSendController {
         if (body.msgId() == null || body.msgId().isBlank()) {
             return HttpResponse.badRequest();
         }
+        int chatType = body.chatType() != null ? body.chatType() : 1;
         imEventSource.sendOutbound(
-            HtImPacketFramer.buildReadReceipt(callerUserId, userId, body.msgId())
+            HtImPacketFramer.buildReadReceipt(callerUserId, userId, body.msgId(), chatType)
         );
         return HttpResponse.noContent();
     }
@@ -218,7 +219,14 @@ public class ImSendController {
         return new ObjectMapper().writeValueAsString(envelope);
     }
 
-    public record ReadReceiptRequest(@NotBlank String msgId) {}
+    /**
+     * {@code chatType} matches the field on {@code HasReadRequest.smali} (re_output apktool_out,
+     * the real Android client's read-receipt class). 1 = 1:1 DM, but the protocol carries it as
+     * a 4-byte BE int after the length-prefixed msgId — the legacy JS shim
+     * ({@code prvgmsgpacket.js:sendReadReceipt}) omits it entirely, which is why we now default
+     * it to 1 server-side rather than crash on missing input.
+     */
+    public record ReadReceiptRequest(@NotBlank String msgId, Integer chatType) {}
     public record TypingRequest(boolean typing) {}
     public record IntroductionRequest(
         long userId, String nickname, String headUrl, String sex, Integer age, String nationality, String bio
