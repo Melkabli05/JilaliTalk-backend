@@ -162,14 +162,16 @@ class HtNotifyMapperTest {
     }
 
     @Test
-    void notifyType5WithoutCoinMapsToStageQuitButWithCoinIsIgnored() {
+    void notifyType5WithSeatIdZeroMapsToStageQuitButOtherwiseIsIgnored() {
+        // seat_id: 0 is the confirmed real shape of a stage-quit push (startwebsock(),
+        // scriptv2.js:4908-4931 embeds a captured example with exactly this field).
         RoomRealtimeEvent quit = mapper.map(
-            "{\"event\":{\"notify_type\":\"5\",\"notify_info\":{\"user_id\":\"9\"}},\"msg_id\":\"m6\"}").orElseThrow();
+            "{\"event\":{\"notify_type\":\"5\",\"notify_info\":{\"user_id\":\"9\",\"seat_id\":0}},\"msg_id\":\"m6\"}").orElseThrow();
         assertEquals("9", assertInstanceOf(RoomRealtimeEvent.StageQuit.class, quit).userId());
 
         assertTrue(mapper.map(
             "{\"event\":{\"notify_type\":\"5\",\"notify_info\":{\"user_id\":\"9\",\"coin\":3}},\"msg_id\":\"m7\"}").isEmpty(),
-            "notify_type 5 with a coin field is a goodie-bag result, not modeled — must not become a stage_quit");
+            "notify_type 5 with a coin field (no seat_id) is a goodie-bag result, not modeled — must not become a stage_quit");
     }
 
     @Test

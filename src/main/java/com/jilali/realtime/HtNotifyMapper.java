@@ -85,14 +85,21 @@ public class HtNotifyMapper {
     private RoomRealtimeEvent mapEvent(FrameContext ctx) throws Exception {
         return switch (ctx.type()) {
             case GIFT_TYPE -> mapTypeOne(ctx.info());
-            case "2" -> new RoomRealtimeEvent.UserQuit(userId(ctx.info()));
+            // startwebsock() also requires !obj.notify_play_room here (root-level field,
+            // shared with the gift-animation-tier indicator on type "1"/"25") — a type-2
+            // push carrying it is a gift-flow artifact, not a genuine room departure.
+            case "2" -> ctx.root().has("notify_play_room") ? null : new RoomRealtimeEvent.UserQuit(userId(ctx.info()));
             case "4" -> {
                 RoomRealtimeEvent e = luckyBagOrNull(ctx);
                 yield e != null ? e : new RoomRealtimeEvent.StageJoin(mapStageUser(ctx.info()));
             }
+            // startwebsock() gates stage-quit on notify_info.seat_id === 0 — confirmed against
+            // a real captured type-5 payload embedded in that source (seat_id: 0, no "coin"
+            // field at all), which is the more authoritative dispatcher than the ghost-mode
+            // fireRoomWebSocket()'s separate "!coin" heuristic this used to check instead.
             case "5" -> {
                 RoomRealtimeEvent e = luckyBagOrNull(ctx);
-                yield e != null ? e : (ctx.info().has("coin") ? null : new RoomRealtimeEvent.StageQuit(userId(ctx.info())));
+                yield e != null ? e : (ctx.info().path("seat_id").asInt(-1) == 0 ? new RoomRealtimeEvent.StageQuit(userId(ctx.info())) : null);
             }
             case "6" -> luckyBagOrNull(ctx);
             case "8" -> new RoomRealtimeEvent.MicOpened(userId(ctx.info()));
@@ -102,7 +109,12 @@ public class HtNotifyMapper {
             case "18" -> new RoomRealtimeEvent.StageInvite(userId(ctx.info()));
             case "23" -> new RoomRealtimeEvent.StageJoin(mapStageUser(ctx.info()));
             case "25" -> new RoomRealtimeEvent.Comment(mapComment(ctx.info()));
-            case "29" -> new RoomRealtimeEvent.StageKick(userId(ctx.info()), textOr(ctx.info(), "manager_name", ""), cname(ctx.info()));
+            // startwebsock() gates this on notify_info.kick_type === 1 (shares the same
+            // "remove from stage" handling as the seat_id===0 case above it) — not every
+            // type-29 push is necessarily a stage kick.
+            case "29" -> ctx.info().path("kick_type").asInt(-1) == 1
+                ? new RoomRealtimeEvent.StageKick(userId(ctx.info()), textOr(ctx.info(), "manager_name", ""), cname(ctx.info()))
+                : null;
             case "30" -> new RoomRealtimeEvent.StageDeviceControl(userId(ctx.info()), 1, 1);
             case "34" -> new RoomRealtimeEvent.ModAccepted(userId(ctx.info()));
             case "35" -> new RoomRealtimeEvent.ModRemoved(userId(ctx.info()));
