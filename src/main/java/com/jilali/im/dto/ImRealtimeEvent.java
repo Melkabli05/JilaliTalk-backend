@@ -50,21 +50,33 @@ public sealed interface ImRealtimeEvent permits
 
     record ConnectionState(String state) implements ImRealtimeEvent {}
 
-    record TextMessage(String fromUserId, String fromNickname, String fromHeadUrl, String text, long ts) implements ImRealtimeEvent {}
+    /**
+     * {@code msgId} is the upstream-issued message identifier (the same UUID we generated and
+     * sent on the outbound {@code SingleMessagePacketRequest} envelope's {@code msg.msg_id}).
+     * The frontend stores the inbound message under this id locally so that the eventual
+     * {@code message_ack} for the same logical message can be correlated by msgId and flip the
+     * local bubble's send-state to {@code delivered}. Without {@code msgId} on the inbound
+     * event, the chat store's dedupe-by-id logic produces two distinct local rows (one for the
+     * optimistic send, one for the echoed upstream delivery) and the {@code message_ack} never
+     * finds its match. The Jackson serializer emits {@code msgId: null} when absent, which the
+     * frontend reads as a missing field and falls back to a fresh local id.
+     */
+    record TextMessage(String fromUserId, String fromNickname, String fromHeadUrl, String text, long ts, String msgId) implements ImRealtimeEvent {}
 
-    record ImageMessage(String fromUserId, String fromNickname, String fromHeadUrl, String imageUrl, long ts) implements ImRealtimeEvent {}
+    record ImageMessage(String fromUserId, String fromNickname, String fromHeadUrl, String imageUrl, long ts, String msgId) implements ImRealtimeEvent {}
 
-    record GiftMessage(String fromUserId, String fromNickname, String fromHeadUrl, long giftId, int count) implements ImRealtimeEvent {}
+    record GiftMessage(String fromUserId, String fromNickname, String fromHeadUrl, long giftId, int count, String msgId) implements ImRealtimeEvent {}
 
     record IntroductionMessage(
         String fromUserId, String fromNickname, String fromHeadUrl,
         String targetUserId, String targetNickname, String targetHeadUrl,
-        String targetSex, Integer targetAge, String targetNationality, String targetBio
+        String targetSex, Integer targetAge, String targetNationality, String targetBio,
+        String msgId
     ) implements ImRealtimeEvent {}
 
-    record VoiceRoomShared(String fromUserId, String fromNickname, String cname, String headUrl, Integer count) implements ImRealtimeEvent {}
+    record VoiceRoomShared(String fromUserId, String fromNickname, String cname, String headUrl, Integer count, String msgId) implements ImRealtimeEvent {}
 
-    record LiveRoomShared(String fromUserId, String fromNickname, String cname, String headUrl) implements ImRealtimeEvent {}
+    record LiveRoomShared(String fromUserId, String fromNickname, String cname, String headUrl, String msgId) implements ImRealtimeEvent {}
 
     record ProfileVisit(String visitorUserId, String nickname, String headUrl) implements ImRealtimeEvent {}
 

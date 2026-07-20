@@ -81,7 +81,8 @@ public class ImEventEnricher {
             firstFilled(g.fromNickname(), info.nickname()),
             firstFilled(g.fromHeadUrl(), headUrlOf(info)),
             g.giftId(),
-            g.count()
+            g.count(),
+            g.msgId()
         ));
     }
 
@@ -93,7 +94,8 @@ public class ImEventEnricher {
             firstFilled(i.fromNickname(), info.nickname()),
             firstFilled(i.fromHeadUrl(), headUrlOf(info)),
             i.targetUserId(), i.targetNickname(), i.targetHeadUrl(),
-            i.targetSex(), i.targetAge(), i.targetNationality(), i.targetBio()
+            i.targetSex(), i.targetAge(), i.targetNationality(), i.targetBio(),
+            i.msgId()
         ));
     }
 

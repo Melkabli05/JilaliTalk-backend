@@ -40,7 +40,8 @@ final class HtImNotifyMapper {
         JsonNode t = root.path("text");
         String text = t.isObject() ? textOr(t, "text", "") : t.asText("");
         long ts = root.path("ts").asLong(System.currentTimeMillis());
-        return new ImRealtimeEvent.TextMessage(fromId, fromNickname, fromHeadUrl, text, ts);
+        String msgId = nullableText(root, "msg_id");
+        return new ImRealtimeEvent.TextMessage(fromId, fromNickname, fromHeadUrl, text, ts, msgId);
     }
 
     private ImRealtimeEvent mapImage(JsonNode root, Header h) {
@@ -50,7 +51,8 @@ final class HtImNotifyMapper {
         String url = root.path("image").path("url").asText("");
         if (url.isBlank()) url = textOr(root, "image_url", "");
         long ts = root.path("ts").asLong(System.currentTimeMillis());
-        return new ImRealtimeEvent.ImageMessage(fromId, fromNickname, fromHeadUrl, url, ts);
+        String msgId = nullableText(root, "msg_id");
+        return new ImRealtimeEvent.ImageMessage(fromId, fromNickname, fromHeadUrl, url, ts, msgId);
     }
 
     private ImRealtimeEvent mapGift(JsonNode root, Header h) {
@@ -59,7 +61,8 @@ final class HtImNotifyMapper {
         String fromHeadUrl  = textOr(root, "from_head_url", textOr(root, "head_url", ""));
         long   giftId       = root.path("gift_id").asLong(0);
         int    count        = root.path("gift_number").asInt(1);
-        return new ImRealtimeEvent.GiftMessage(fromId, fromNickname, fromHeadUrl, giftId, count);
+        String msgId        = nullableText(root, "msg_id");
+        return new ImRealtimeEvent.GiftMessage(fromId, fromNickname, fromHeadUrl, giftId, count, msgId);
     }
 
     /**
@@ -75,6 +78,7 @@ final class HtImNotifyMapper {
         String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
         String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
         String fromHeadUrl  = textOr(root, "from_head_url", textOr(root, "head_url", ""));
+        String msgId        = nullableText(root, "msg_id");
 
         JsonNode intro = root.path("introduction");
         JsonNode profile = intro.path("user_profile");
@@ -91,7 +95,8 @@ final class HtImNotifyMapper {
             nullableAny(profileNode, "sex"),
             profileNode.hasNonNull("age") ? profileNode.path("age").asInt() : null,
             nullableText(profileNode, "country", "nationality"),
-            nullableText(profileNode, "bio"));
+            nullableText(profileNode, "bio"),
+            msgId);
     }
 
     /** Like {@link #nullableText}, but converts non-string JSON values (e.g. {@code sex} is an
@@ -117,11 +122,12 @@ final class HtImNotifyMapper {
             String cname        = textOr(root, "cname", "");
             String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
             String headUrl      = root.path("head_url").isNull() ? null : textOr(root, "head_url", null);
+            String msgId        = nullableText(root, "msg_id");
             if (root.has("count") || root.has("voice_count")) {
                 int cnt = root.has("count") ? root.path("count").asInt(0) : root.path("voice_count").asInt(0);
-                return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, cnt);
+                return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, cnt, msgId);
             }
-            return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl);
+            return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId);
         }
 
         JsonNode info = root.path("notify_info");
