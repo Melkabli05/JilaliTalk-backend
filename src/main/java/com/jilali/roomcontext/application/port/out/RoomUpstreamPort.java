@@ -1,25 +1,20 @@
 package com.jilali.roomcontext.application.port.out;
 
-import com.jilali.room.dto.BatchQueryRequest;
-import com.jilali.room.dto.BatchQueryResponse;
-import com.jilali.room.dto.CategoryTopicListResponse;
-import com.jilali.room.dto.ChannelListItem;
-import com.jilali.room.dto.ChannelListResponse;
-import com.jilali.room.dto.CreateVoiceChannelRequest;
-import com.jilali.room.dto.CreateVoiceChannelResponse;
-import com.jilali.room.dto.EndChannelRequest;
-import com.jilali.room.dto.LanguageGroup;
-import com.jilali.room.dto.UpdateVoiceChannelRequest;
-import com.jilali.room.dto.VoiceRoomInfoResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.BatchQueryRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.BatchQueryResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.CategoryTopicListResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.ChannelListItem;
+import com.jilali.roomcontext.infrastructure.dto.room.ChannelListResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.CreateVoiceChannelRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.CreateVoiceChannelResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.EndChannelRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.LanguageGroup;
+import com.jilali.roomcontext.infrastructure.dto.room.UpdateVoiceChannelRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.VoiceRoomInfoResponse;
 
 import java.util.List;
 import java.util.Map;
 
-/** Pass-through discovery/info/lifecycle calls - the fan-out (join-bundle) and drift-correction
- *  (audience-reconcile) and search behaviors are deliberately NOT here, since the existing
- *  legacy RoomJoinService/RoomEventSource/RoomsSearchService already correctly implement them
- *  and are reused directly by api.RoomController rather than re-wrapped - see that class's
- *  Javadoc. */
 public interface RoomUpstreamPort {
     ChannelListResponse listVoiceRooms(int langId, int limit, int offset, int refresh);
     ChannelListResponse listLiveRooms(int langId, int limit, int offset, int refresh);

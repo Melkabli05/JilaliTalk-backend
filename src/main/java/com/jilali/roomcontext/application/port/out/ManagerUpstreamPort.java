@@ -1,9 +1,9 @@
 package com.jilali.roomcontext.application.port.out;
 
-import com.jilali.manager.dto.ApproveManagerRequest;
-import com.jilali.manager.dto.ManagerJudgeResponse;
-import com.jilali.manager.dto.ManagerListResponse;
-import com.jilali.manager.dto.SetManagerRequest;
+import com.jilali.roomcontext.infrastructure.dto.manager.ApproveManagerRequest;
+import com.jilali.roomcontext.infrastructure.dto.manager.ManagerJudgeResponse;
+import com.jilali.roomcontext.infrastructure.dto.manager.ManagerListResponse;
+import com.jilali.roomcontext.infrastructure.dto.manager.SetManagerRequest;
 
 public interface ManagerUpstreamPort {
     ManagerListResponse list(String cname, long hostId);

@@ -1,15 +1,15 @@
 package com.jilali.roomcontext.api;
 
 import com.jilali.roomcontext.application.port.out.StageUpstreamPort;
-import com.jilali.stage.dto.DeviceControlRequest;
-import com.jilali.stage.dto.KickRequest;
-import com.jilali.stage.dto.PublisherTokenResponse;
-import com.jilali.stage.dto.RaiseHandApprovalRequest;
-import com.jilali.stage.dto.RaiseHandRequest;
-import com.jilali.stage.dto.StageActionRequest;
-import com.jilali.stage.dto.StageInviteApprovalRequest;
-import com.jilali.stage.dto.StageInviteRequest;
-import com.jilali.stage.dto.StageListResponse;
+import com.jilali.roomcontext.infrastructure.dto.stage.DeviceControlRequest;
+import com.jilali.roomcontext.infrastructure.dto.stage.KickRequest;
+import com.jilali.roomcontext.infrastructure.dto.stage.PublisherTokenResponse;
+import com.jilali.roomcontext.infrastructure.dto.stage.RaiseHandApprovalRequest;
+import com.jilali.roomcontext.infrastructure.dto.stage.RaiseHandRequest;
+import com.jilali.roomcontext.infrastructure.dto.stage.StageActionRequest;
+import com.jilali.roomcontext.infrastructure.dto.stage.StageInviteApprovalRequest;
+import com.jilali.roomcontext.infrastructure.dto.stage.StageInviteRequest;
+import com.jilali.roomcontext.infrastructure.dto.stage.StageListResponse;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;

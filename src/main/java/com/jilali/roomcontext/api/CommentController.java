@@ -1,11 +1,11 @@
 package com.jilali.roomcontext.api;
 
-import com.jilali.comment.dto.BffSendCommentRequest;
-import com.jilali.comment.dto.CaptionHistoryResponse;
-import com.jilali.comment.dto.CaptionSwitchRequest;
-import com.jilali.comment.dto.CommentListDto;
-import com.jilali.comment.dto.SendCommentRequest;
-import com.jilali.comment.dto.SendCommentResponse;
+import com.jilali.roomcontext.infrastructure.dto.comment.BffSendCommentRequest;
+import com.jilali.roomcontext.infrastructure.dto.comment.CaptionHistoryResponse;
+import com.jilali.roomcontext.infrastructure.dto.comment.CaptionSwitchRequest;
+import com.jilali.roomcontext.infrastructure.dto.comment.CommentListDto;
+import com.jilali.roomcontext.infrastructure.dto.comment.SendCommentRequest;
+import com.jilali.roomcontext.infrastructure.dto.comment.SendCommentResponse;
 import com.jilali.roomcontext.application.port.out.CommentUpstreamPort;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;

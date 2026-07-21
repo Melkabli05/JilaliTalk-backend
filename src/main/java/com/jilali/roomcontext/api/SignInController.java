@@ -1,14 +1,14 @@
 package com.jilali.roomcontext.api;
 
-import com.jilali.room.dto.RoomLevelConfigResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.RoomLevelConfigResponse;
 import com.jilali.roomcontext.application.port.out.SignInUpstreamPort;
 import com.jilali.roomcontext.application.service.SignInBundleService;
-import com.jilali.signin.dto.ClaimRewardRequest;
-import com.jilali.signin.dto.ClaimTaskRewardRequest;
-import com.jilali.signin.dto.RoomLevelBundleResponse;
-import com.jilali.signin.dto.RoomLevelRewardResponse;
-import com.jilali.signin.dto.VoiceSignPanelResponse;
-import com.jilali.signin.dto.VoiceTasksResponse;
+import com.jilali.roomcontext.infrastructure.dto.signin.ClaimRewardRequest;
+import com.jilali.roomcontext.infrastructure.dto.signin.ClaimTaskRewardRequest;
+import com.jilali.roomcontext.infrastructure.dto.signin.RoomLevelBundleResponse;
+import com.jilali.roomcontext.infrastructure.dto.signin.RoomLevelRewardResponse;
+import com.jilali.roomcontext.infrastructure.dto.signin.VoiceSignPanelResponse;
+import com.jilali.roomcontext.infrastructure.dto.signin.VoiceTasksResponse;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;

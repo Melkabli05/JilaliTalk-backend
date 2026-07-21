@@ -1,7 +1,7 @@
 package com.jilali.roomcontext.application.service;
 
 import com.jilali.roomcontext.application.port.out.SignInUpstreamPort;
-import com.jilali.signin.dto.RoomLevelBundleResponse;
+import com.jilali.roomcontext.infrastructure.dto.signin.RoomLevelBundleResponse;
 import jakarta.inject.Singleton;
 
 import java.util.concurrent.StructuredTaskScope;

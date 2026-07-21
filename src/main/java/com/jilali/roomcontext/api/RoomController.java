@@ -1,25 +1,25 @@
 package com.jilali.roomcontext.api;
 
-import com.jilali.client.JilaliResponses;
-import com.jilali.client.JilaliClient;
 import com.jilali.realtime.RoomEventSource;
-import com.jilali.room.RoomJoinService;
-import com.jilali.room.RoomsSearchService;
-import com.jilali.room.dto.AudienceReconcileResponse;
-import com.jilali.room.dto.BatchQueryRequest;
-import com.jilali.room.dto.BatchQueryResponse;
-import com.jilali.room.dto.CategoryTopicListResponse;
-import com.jilali.room.dto.ChannelListItem;
-import com.jilali.room.dto.ChannelListResponse;
-import com.jilali.room.dto.CreateVoiceChannelRequest;
-import com.jilali.room.dto.CreateVoiceChannelResponse;
-import com.jilali.room.dto.EndChannelRequest;
-import com.jilali.room.dto.JoinBundleResponse;
-import com.jilali.room.dto.LanguageGroup;
-import com.jilali.room.dto.UpdateVoiceChannelRequest;
-import com.jilali.room.dto.VoiceRoomInfoResponse;
 import com.jilali.roomcontext.application.port.out.RoomUpstreamPort;
-import com.jilali.user.dto.RoomUserListRequest;
+import com.jilali.roomcontext.application.service.RoomJoinService;
+import com.jilali.roomcontext.application.service.RoomsSearchService;
+import com.jilali.roomcontext.infrastructure.client.JilaliResponses;
+import com.jilali.roomcontext.infrastructure.client.UserJilaliClient;
+import com.jilali.roomcontext.infrastructure.dto.room.AudienceReconcileResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.BatchQueryRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.BatchQueryResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.CategoryTopicListResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.ChannelListItem;
+import com.jilali.roomcontext.infrastructure.dto.room.ChannelListResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.CreateVoiceChannelRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.CreateVoiceChannelResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.EndChannelRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.JoinBundleResponse;
+import com.jilali.roomcontext.infrastructure.dto.room.LanguageGroup;
+import com.jilali.roomcontext.infrastructure.dto.room.UpdateVoiceChannelRequest;
+import com.jilali.roomcontext.infrastructure.dto.room.VoiceRoomInfoResponse;
+import com.jilali.roomcontext.infrastructure.dto.user.RoomUserListRequest;
 import io.micronaut.cache.annotation.Cacheable;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
@@ -37,15 +37,20 @@ import java.util.Map;
 /** New-architecture controller, temporarily mounted under {@code /api/v2} - see
  *  TranslateController's Javadoc for the coexistence rationale.
  *
- * <p>Deliberately depends on the existing legacy RoomJoinService/RoomEventSource/
- * RoomsSearchService directly (their public methods, joinBundle/audienceRevision/search)
- * rather than re-wrapping them behind a new port - those three already correctly implement
- * fan-out (StructuredTaskScope), drift-correction, and pagination/fuzzy-search respectively,
- * and re-deriving any of that logic here would be pure risk for zero benefit. This is the
- * most concurrency-sensitive capability in the whole migration (per docs/room-redesign/
- * 09-technical-risks.md R3), which is exactly why it reuses proven code instead of rebuilding
- * it from scratch. Everything else (pure pass-through discovery/info/lifecycle calls) goes
- * through the new RoomUpstreamPort, same pattern as every other slice in this migration. */
+ * <p>All upstream HTTP calls (discovery/info/lifecycle pass-through, the join-bundle fan-out,
+ * and the search fan-out) go through this bounded context's own dedicated clients
+ * (RoomJilaliClient/StageJilaliClient/UserJilaliClient/CommentJilaliClient via RoomUpstreamPort/
+ * RoomJoinService/RoomsSearchService) - zero dependency on the legacy client.JilaliClient god
+ * interface.
+ *
+ * <p>One deliberate exception: {@code realtime.RoomEventSource.audienceRevision(cname)} for the
+ * audience-reconcile drift-check counter. That class is the live WebSocket relay's in-memory
+ * revision tracker (bumped by inbound upstream push events, not an HTTP call) - a completely
+ * different subsystem from "the HTTP client to HelloTalk" this rebuild targets, and duplicating
+ * the entire realtime WebSocket connector/pub-sub layer to avoid one 3-line method call would be
+ * a large, unrelated, destabilizing undertaking for a still-live piece of infrastructure. The
+ * actual upstream HTTP call in this same endpoint (the roster refetch) already goes through the
+ * dedicated UserJilaliClient. */
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/v2/rooms")
 public class RoomController {
@@ -54,16 +59,16 @@ public class RoomController {
     private final RoomJoinService roomJoinService;
     private final RoomEventSource roomEventSource;
     private final RoomsSearchService roomsSearchService;
-    private final JilaliClient client;
+    private final UserJilaliClient userClient;
 
     public RoomController(RoomUpstreamPort upstream, RoomJoinService roomJoinService,
                            RoomEventSource roomEventSource, RoomsSearchService roomsSearchService,
-                           JilaliClient client) {
+                           UserJilaliClient userClient) {
         this.upstream = upstream;
         this.roomJoinService = roomJoinService;
         this.roomEventSource = roomEventSource;
         this.roomsSearchService = roomsSearchService;
-        this.client = client;
+        this.userClient = userClient;
     }
 
     @Get("/voice")
@@ -145,7 +150,7 @@ public class RoomController {
             return new AudienceReconcileResponse(revision, false, null);
         }
         var roster = JilaliResponses.unwrap(
-            client.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType)));
+            userClient.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType)));
         return new AudienceReconcileResponse(revision, true, roster.list());
     }
 

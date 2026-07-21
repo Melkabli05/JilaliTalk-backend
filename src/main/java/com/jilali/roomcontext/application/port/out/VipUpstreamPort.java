@@ -1,17 +1,15 @@
 package com.jilali.roomcontext.application.port.out;
 
-import com.jilali.vip.dto.ReceiveFriendSentCardRequest;
-import com.jilali.vip.dto.UseVipExperienceCardRequest;
-import com.jilali.vip.dto.VipExperienceCardRecordsRequest;
-import com.jilali.vip.dto.VipExperienceCardRecordsResponse;
-import com.jilali.vip.dto.VipFeatureRightRequest;
-import com.jilali.vip.dto.VipFeatureRightResponse;
+import com.jilali.roomcontext.infrastructure.dto.vip.ReceiveFriendSentCardRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.UseVipExperienceCardRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipExperienceCardRecordsRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipExperienceCardRecordsResponse;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipFeatureRightRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipFeatureRightResponse;
 
 /** Mirrors the real HelloTalk upstream action set exactly (query feature-right, query records,
  *  use card, receive friend-sent card) - deliberately action-shaped rather than a generic
- *  CRUD-style repository, because that's what the actual upstream API is. Reuses the existing
- *  {@code com.jilali.vip.dto} wire types directly rather than declaring parallel duplicates -
- *  they already are the wire contract. */
+ *  CRUD-style repository, because that's what the actual upstream API is. */
 public interface VipUpstreamPort {
     VipFeatureRightResponse queryFeatureRight(VipFeatureRightRequest request);
     VipExperienceCardRecordsResponse queryRecords(VipExperienceCardRecordsRequest request);

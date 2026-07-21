@@ -1,13 +1,13 @@
 package com.jilali.roomcontext.api;
 
 import com.jilali.roomcontext.application.port.out.VipUpstreamPort;
-import com.jilali.vip.dto.ClaimVipTrialResponse;
-import com.jilali.vip.dto.ReceiveFriendSentCardRequest;
-import com.jilali.vip.dto.UseVipExperienceCardRequest;
-import com.jilali.vip.dto.VipExperienceCardRecordsRequest;
-import com.jilali.vip.dto.VipExperienceCardRecordsResponse;
-import com.jilali.vip.dto.VipFeatureRightRequest;
-import com.jilali.vip.dto.VipFeatureRightResponse;
+import com.jilali.roomcontext.infrastructure.dto.vip.ClaimVipTrialResponse;
+import com.jilali.roomcontext.infrastructure.dto.vip.ReceiveFriendSentCardRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.UseVipExperienceCardRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipExperienceCardRecordsRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipExperienceCardRecordsResponse;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipFeatureRightRequest;
+import com.jilali.roomcontext.infrastructure.dto.vip.VipFeatureRightResponse;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;

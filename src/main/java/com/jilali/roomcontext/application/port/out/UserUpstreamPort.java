@@ -1,16 +1,16 @@
 package com.jilali.roomcontext.application.port.out;
 
-import com.jilali.user.dto.BatchStatusRequest;
-import com.jilali.user.dto.BatchStatusResponse;
-import com.jilali.user.dto.EnrichBatchRequest;
-import com.jilali.user.dto.EnrichBatchResponse;
-import com.jilali.user.dto.HeartbeatRequest;
-import com.jilali.user.dto.HostStatus;
-import com.jilali.user.dto.RoomUserListRequest;
-import com.jilali.user.dto.RoomUserListResponse;
-import com.jilali.user.dto.RoomUserProfileResponse;
-import com.jilali.user.dto.UserInfo;
-import com.jilali.user.dto.UserStatus;
+import com.jilali.roomcontext.infrastructure.dto.user.BatchStatusRequest;
+import com.jilali.roomcontext.infrastructure.dto.user.BatchStatusResponse;
+import com.jilali.roomcontext.infrastructure.dto.user.EnrichBatchRequest;
+import com.jilali.roomcontext.infrastructure.dto.user.EnrichBatchResponse;
+import com.jilali.roomcontext.infrastructure.dto.user.HeartbeatRequest;
+import com.jilali.roomcontext.infrastructure.dto.user.HostStatus;
+import com.jilali.roomcontext.infrastructure.dto.user.RoomUserListRequest;
+import com.jilali.roomcontext.infrastructure.dto.user.RoomUserListResponse;
+import com.jilali.roomcontext.infrastructure.dto.user.RoomUserProfileResponse;
+import com.jilali.roomcontext.infrastructure.dto.user.UserInfo;
+import com.jilali.roomcontext.infrastructure.dto.user.UserStatus;
 
 import java.util.Map;
 
