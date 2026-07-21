@@ -52,29 +52,29 @@ Exact 8-field clone, only `multi_name` nullability differs.
 
 **Fix**: collapse to a single record with optional fields; verify against upstream wire-shape contract.
 
-## 6. Follow/Unfollow mirror pair (LOW)
+## 6. Follow/Unfollow mirror pair (LOW → **retracted**, see Refactor 11 note)
 
-`FollowRequest` + `FollowResultResponse` ↔ `UnfollowRequest` + `UnfollowResultResponse`. Could share a single request/result base.
+`FollowRequest` + `FollowResultResponse` ↔ `UnfollowRequest` + `UnfollowResultResponse`.
 
-**Fix**: small refactor; cohesion benefit.
+**Status (Refactor 11)**: retracted. `UnfollowResultResponse`'s own docstring already documents why it's deliberately kept separate from `FollowResultResponse`: verified against the real upstream, a successful unfollow's `data` object carries only `list_timestamp`, while follow's carries 3 additional fields (`status`, `limit_count`, `create_time`) — sharing a base type would mean either the unfollow path deserializing fields it never receives, or a base type narrow enough to be pointless. `FollowRequest`/`UnfollowRequest` are already 2-field records (`{uid, nickName}`) using distinct wire key names (`follow_uid` vs `unfollow_uid`, a real semantic distinction, not an accidental one) — introducing a shared base for two 2-field records adds an indirection layer without removing meaningful duplication. No refactor applied.
 
-## 7. The seven stage `*Request` DTOs (MEDIUM)
+## 7. The seven stage `*Request` DTOs (MEDIUM → **retracted**, see Refactor 11 note)
 
-`DeviceControlRequest`, `KickRequest`, `RaiseHandRequest`, `RaiseHandApprovalRequest`, `StageActionRequest`, `StageInviteRequest`, `StageInviteApprovalRequest` — all share `(cname, userId)` plus 0-3 action-specific fields.
+`DeviceControlRequest`, `KickRequest`, `RaiseHandRequest`, `RaiseHandApprovalRequest`, `StageActionRequest`, `StageInviteRequest`, `StageInviteApprovalRequest`.
 
-**Fix**: sealed `StageAction` interface + per-action records.
+**Status (Refactor 11)**: ⚠ Investigated and the original "sealed `StageAction` interface" recommendation was **retracted** as unnecessary/incorrect abstraction. Verified against `StageController.java`: each record is bound independently via `@Valid @Body <ConcreteType>` on its own distinct endpoint (`join`, `quit`, `raiseHand`, `kick`, `raiseHandApproval`, `invite`, `inviteApproval`, `deviceControl`) — there is no single dispatch point and no wire-level discriminator field, so a sealed interface has no legitimate deserialization target (Micronaut Serde/Jackson would need `@JsonTypeInfo`-style tagging the actual wire format doesn't carry). The field sets also genuinely differ — `KickRequest` carries `userId`, `StageActionRequest` doesn't; `DeviceControlRequest` carries `switchType`/`deviceType`, unique to it — so the "shared skeleton" is really just `cname` + `busiType` (2 of 3-4 fields), not enough duplication to justify a shared type. A sealed interface here would be over-engineering: each endpoint would still need to reference its own concrete record for `@Body` binding, so the abstraction wouldn't remove any code, only add ceremony. **No refactor applied — the audit's own recommendation was wrong and is corrected here per the explicit instruction to challenge findings rather than implement them by default.**
 
-## 8. The four manager `*Request` DTOs (same pattern — see #7)
+## 8. The four manager `*Request` DTOs (same pattern — see #7, same retraction applies)
 
-`ApproveManagerRequest`, `SetManagerRequest`, (plus possibly `ManagerJudgeRequest` if it exists as a request). Same `(cname, userId)` skeleton.
+`ApproveManagerRequest`, `SetManagerRequest`, (plus possibly `ManagerJudgeRequest` if it exists as a request).
 
-**Fix**: parallel refactor as #7.
+**Status (Refactor 11)**: retracted for the same reason as #7 — independent per-endpoint `@Body` bindings, no discriminator, differing field sets. No refactor applied.
 
-## 9. `core/ws/HeartbeatPump` (LOW — single-caller helper)
+## 9. `core/ws/HeartbeatPump` (LOW)
 
-Used by `HtImUpstreamConnector` (only). Could be inlined as a `@Scheduled`-annotated method once `im`/`realtime` consolidate.
+**Correction**: the original "single-caller" claim was wrong — grep-verified two callers: `HtImUpstreamConnector` (`new HeartbeatPump("im-hb")`) AND `HtLiveHubUpstreamConnector` (`new HeartbeatPump("livehub-hb")`). This is actually shared infrastructure, same pattern as `ReconnectStrategy`/`WebSocketConnectionLifecycle` — a plain per-instance heartbeat pump, not a `@Scheduled`-bean candidate as-is (each connector needs its own independent heartbeat cadence tied to its own connection lifetime, not a single shared scheduled task).
 
-**Fix**: replace with `@Scheduled(fixedDelay=...)` per Phase 3 consolidation.
+**Fix**: no change needed today. Could migrate into `com.jilali.platform.websocket` alongside `WebSocketConnectionLifecycle` for consistency (both are per-connector shared infra), but it already lives in a reasonable location (`core.ws`) and works correctly — pure package-rename churn with no behavior change, low priority.
 
 ## 10. `core/ws/ExponentialBackoff` (LOW — single purpose, two callers)
 
@@ -82,11 +82,9 @@ Two callers (`HtImUpstreamConnector`, `RoomEventSource`). Could be replaced by `
 
 **Fix**: see Micronaut-adoption report.
 
-## 11. `core/SnakeToCamelJson` (LOW — utility duplication suspect)
+## 11. `core/SnakeToCamelJson` (LOW — verified, not redundant)
 
-The filter `CamelCaseResponseFilter` already does snake_case→camelCase conversion on outbound HTTP responses. Whether `SnakeToCamelJson` is independently used or is redundant needs a 5-line check.
-
-**Fix**: if redundant, delete.
+**Status**: verified. `SnakeToCamelJson.convert(tree)` IS the implementation `CamelCaseResponseFilter` calls (`response.body(SnakeToCamelJson.convert(tree))`) — it's the filter's collaborator, not a parallel/redundant implementation. No duplication; no action needed.
 
 ## 12. `core/ws/SequentialSender` (LOW — utility used by connectors)
 
@@ -105,6 +103,8 @@ These look similar but solve different problems:
 ## 14. DTO `CommentListResponse` ↔ `CommentListDto` (MEDIUM)
 
 Structurally identical wrapper around `List<Comment>` vs `List<CommentDto>` — same shape, different inner type. Eliminated for free if #3 is fixed.
+
+**Status**: ✅ resolved for free by Refactor 5 (item #3) — `CommentDto` deleted, `CommentListDto.items` now types directly to `List<Comment>`.
 
 ## 15. The various `Util` / `Codec` / `Wrapper` classes (LOW)
 
