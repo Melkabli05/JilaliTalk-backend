@@ -24,6 +24,8 @@
 
 **Concrete fix**: see target-structure + roadmap reports.
 
+**Status (Refactor 6)**: Started the consolidation incrementally. The state-machine + reconnect-scheduler surface has been extracted into `com.jilali.platform.websocket.WebSocketConnectionLifecycle` (single source of truth for both connectors' `intentionalClose` flag, `reconnectInBackground` loop, and `close` semantics). Each connector still owns its wire-specific code (frame encode/decode, notify mapping, event dispatch) and delegates to the lifecycle for the shared parts. Refactor 7 will complete the migration by removing the connectors' own duplicated state fields.
+
 ## 2. `client/JilaliClient` imports from 7 feature-DTO packages (HIGH — circular dep)
 
 See the dependency-analysis report. `JilaliClient.java` alone imports ~65 DTO classes owned by `comment.dto`, `manager.dto`, `room.dto`, `signin.dto`, `stage.dto`, `user.dto`. Not duplication per se, but the cause is the same pattern repeated.

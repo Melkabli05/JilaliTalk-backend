@@ -4,6 +4,7 @@ package com.jilali.realtime;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jilali.platform.reconnect.ReconnectStrategy;
+import com.jilali.platform.websocket.WebSocketConnectionLifecycle;
 import com.jilali.core.ws.HeartbeatPump;
 import com.jilali.core.ws.SequentialSender;
 import com.jilali.realtime.dto.RoomCcRealtimeEvent;
@@ -48,6 +49,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("livehub-hb");
     private final ReconnectStrategy backoff = new ReconnectStrategy(Duration.ofSeconds(1), Duration.ofSeconds(30));
+    private final WebSocketConnectionLifecycle lifecycle = new WebSocketConnectionLifecycle("livehub", backoff);
 
     private volatile Consumer<RoomRealtimeEvent> eventListener;
     private volatile Consumer<RoomCcRealtimeEvent> ccEventListener;
@@ -86,6 +88,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
         this.session = new Session(Long.parseLong(userId), cname, isVisitor, 60, false);
         this.intentionalClose = false;
         this.announcedConnected = false;
+        lifecycle.markOpening();
         return attemptConnect();
     }
 
@@ -106,7 +109,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
                 }
                 this.ws = sock;
                 updateSession(cur -> withConnected(cur, true));
-                backoff.reset();
+                lifecycle.resetBackoff();
                 log.info("LiveHub WS connected cname={}", session.cname);
                 send(initFrame());
                 sock.request(1);
@@ -130,6 +133,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     @Override
     public void close() {
         intentionalClose = true;
+        lifecycle.markClosed();
         if (session == null) return;
         updateSession(s -> withConnected(s, false));
         heartbeat.close();

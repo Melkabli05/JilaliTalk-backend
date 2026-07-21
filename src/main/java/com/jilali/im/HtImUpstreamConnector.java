@@ -7,6 +7,7 @@ import com.jilali.auth.HelloTalkAuthClient;
 import com.jilali.auth.dto.upstream.LoginResponse;
 import com.jilali.core.AuthTokenHolder;
 import com.jilali.platform.reconnect.ReconnectStrategy;
+import com.jilali.platform.websocket.WebSocketConnectionLifecycle;
 import com.jilali.core.ws.HeartbeatPump;
 import com.jilali.core.ws.SequentialSender;
 import com.jilali.crypto.ApkSignatureGenerator;
@@ -73,6 +74,7 @@ class HtImUpstreamConnector implements AutoCloseable {
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("im-hb");
     private final ReconnectStrategy backoff = new ReconnectStrategy(Duration.ofSeconds(1), Duration.ofSeconds(30));
+    private final WebSocketConnectionLifecycle lifecycle = new WebSocketConnectionLifecycle("im", backoff);
 
     private volatile Consumer<ImRealtimeEvent> eventListener;
     private volatile Runnable disconnectListener;
@@ -107,6 +109,7 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     CompletableFuture<Void> connect() {
         this.intentionalClose = false;
+        lifecycle.markOpening();
         log.info("IM WS connecting uid={}", userId);
         return attemptConnect();
     }
@@ -122,7 +125,7 @@ class HtImUpstreamConnector implements AutoCloseable {
                 }
                 this.ws        = sock;
                 this.connected = true;
-                backoff.reset();
+                lifecycle.resetBackoff();
                 log.info("IM WS connected uid={}", userId);
                 sendLoginPacket(sock);
                 sock.request(1);
@@ -141,11 +144,17 @@ class HtImUpstreamConnector implements AutoCloseable {
                 return null;
             });
         }, CompletableFuture.delayedExecutor(delay.toMillis(), TimeUnit.MILLISECONDS));
+        // Note: the above body is intentionally NOT yet migrated to lifecycle.reconnectInBackground
+        // (which would also handle the closed-loop reschedule). The connector also publishes its
+        // own `intentionalClose` flag in the listener race check (line 537), and the migration
+        // is reserved for the upcoming Refactor 7 (full lifecycle replacement). Doing it in two
+        // incremental steps avoids any risk of subtle behavior change in the reconnect window.
     }
 
     @Override
     public void close() {
         intentionalClose = true;
+        lifecycle.markClosed();
         connected = false;
         heartbeat.close();
         sender.reset();
