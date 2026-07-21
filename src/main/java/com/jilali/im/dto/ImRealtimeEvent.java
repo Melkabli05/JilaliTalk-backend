@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = ImRealtimeEvent.ModRemoved.class,           name = "mod_removed"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.ModUnmuted.class,           name = "mod_unmuted"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.Follow.class,               name = "follow"),
+    @JsonSubTypes.Type(value = ImRealtimeEvent.GroupMessage.class,         name = "group_message"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.TypingIndicator.class,      name = "typing_indicator"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.ReadReceipt.class,          name = "read_receipt"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.MessageAck.class,            name = "message_ack"),
@@ -40,6 +41,7 @@ public sealed interface ImRealtimeEvent permits
     ImRealtimeEvent.ModRemoved,
     ImRealtimeEvent.ModUnmuted,
     ImRealtimeEvent.Follow,
+    ImRealtimeEvent.GroupMessage,
     ImRealtimeEvent.TypingIndicator,
     ImRealtimeEvent.ReadReceipt,
     ImRealtimeEvent.MessageAck,
@@ -118,6 +120,19 @@ public sealed interface ImRealtimeEvent permits
     record ModUnmuted(String userId) implements ImRealtimeEvent {}
 
     record Follow(String userId, String nickname, String headUrl, int status) implements ImRealtimeEvent {} // 1 = followed you, 2 = followed back
+
+    /**
+     * Reserved for a future group-chat implementation. Confirmed via re_output that group chat
+     * is a REAL feature distinct from 1:1 DMs — a separate send cmdId 0x7049 (vs 0x4001 for
+     * 1:1), group envelope fields (room_id/sender_id/sender_ts, see zy/a.smali:383-424 and
+     * GroupMessagePacketRequest.smali), a dedicated offline-sync cmdId 0x750f
+     * (GroupMsgRequest.smali), and REST group-management endpoints (create/add/remove member,
+     * IIMGroupChatService.smali). None of that wire protocol is implemented yet — this record
+     * is kept as a placeholder for the frontend's {@code 'group_message'} union variant so a
+     * dedicated follow-up can wire up the real 0x7049 path without re-threading the type
+     * through both codebases from scratch.
+     */
+    record GroupMessage(String senderId, String senderName, String roomName, String text) implements ImRealtimeEvent {}
 
     record TypingIndicator(String fromUserId, boolean isTyping) implements ImRealtimeEvent {}
 
