@@ -1,0 +1,31 @@
+# Technical Risks
+
+## R1 — `BusiType`'s value set is not fully confirmed (Medium)
+
+`01-domain-model.md` deliberately keeps `BusiType` as a value object wrapping `int` rather than an enum, because the audit only ever observed 2 values (voice=1, live=2, inferred from controller path segments like `/voice/*` vs `/live/*`) and never found an authoritative upstream contract listing every valid value. **Risk**: if a 3rd `busi_type` value exists upstream (e.g. for a future room type) and the new code ever DOES promote this to an enum without confirming the full set first, an unrecognized value would throw instead of degrading gracefully.
+
+**Mitigation**: keep it a plain-`int`-wrapping value object through Phase 3; only promote to a sealed/enum type after a dedicated verification pass (grep the decompiled APK / smali for every `busi_type` literal, the same technique used earlier in this project's history for other wire-format questions).
+
+## R2 — No local persistence means "verify against legacy" (Phase 4) can't use data diffing (Low, but worth stating explicitly)
+
+Per `01-domain-model.md`, every aggregate in this bounded context is reconstructed from upstream calls on demand — there is no local database row to compare old-vs-new. This actually *reduces* risk relative to a typical migration (no data-migration correctness to verify), but it does mean Phase 4 verification is entirely about **request/response wire-contract equivalence**, and provides no protection against a subtle behavioral divergence that both old and new code would reproduce identically against a live upstream call (e.g., if both implementations happen to hit the same upstream edge case the same way, side-by-side diffing won't surface a *shared* misunderstanding of the contract). Recorded, not mitigated — this is an inherent property of a BFF-over-BFF migration, not something a different testing strategy fixes.
+
+## R3 — `Room`/`Stage` fan-out concurrency is the highest-risk piece, sequenced last on purpose (Medium-High if rushed, Low if the roadmap's sequencing is followed)
+
+`RoomJoinService`'s `StructuredTaskScope` fan-out (join-bundle) and `Stage`'s seat/raise-hand state transitions are the most concurrency-sensitive code in the entire bounded context. This session already has one concrete data point on what happens when concurrent-state code is restructured under time pressure without careful isolation: the legacy `WebSocketConnectionLifecycle` full-migration attempt produced broken code (dead branches, an injected placeholder method) and had to be `git checkout`-reverted. `07-migration-roadmap.md` Phase 3 deliberately sequences `Room`/`Stage` last, after every supporting pattern (fan-out via Sign-in, aggregate-with-state-machine via VIP) is already proven on lower-stakes capabilities. **The risk is not the pattern itself — `StructuredTaskScope` is proven to work correctly in the legacy code today — the risk is attempting the migration of that specific code without the same staged de-risking that worked for every other refactor in this project's history.**
+
+## R4 — Two legacy endpoint pairs may already be duplicate use cases, and the new code must not blindly implement both (Low)
+
+`04-use-case-map.md` flags `room.RoomController`'s `/config` vs `signin.SigninController`'s `/room-level-config`, and `room.RoomController`'s `/{cname}/join-bundle` vs `user.UserController`'s `/rooms/{cname}/join`, as likely the same underlying use case reachable via two legacy paths. **Risk**: if Phase 3 builds two independent `application.service` implementations for what's actually one use case, the new code would introduce a maintenance burden the legacy code arguably already has, rather than fixing it. **Mitigation**: before implementing either pair, do a focused comparison of the legacy controllers' actual behavior (not just the audit's inference from path names) to confirm they're truly the same use case before consolidating — do not assume the audit's inference is correct without verification, the same discipline applied throughout the prior refactor pass (three of the audit's own duplication findings turned out to be wrong on inspection; this one hasn't been verified yet either).
+
+## R5 — `ArchUnit` (or equivalent) is not yet a project dependency (Low)
+
+`06-package-dependency-analysis.md` recommends a structural "no cycle" test once Phase 3 code exists. This requires adding a test-scoped dependency (`ArchUnit` is the standard choice) that isn't in `build.gradle` today. Low risk (additive, test-scope-only, no production impact) but worth flagging as a concrete action item rather than an implicit assumption.
+
+## R6 — The new `com.jilali.roomcontext` package coexists with legacy packages that share overlapping upstream concepts (Low-Medium)
+
+During Phases 2-5, both `com.jilali.room` (legacy, live) and `com.jilali.roomcontext` (new, being built) exist in the same codebase, both ultimately calling the same HelloTalk upstream. **Risk**: if both are simultaneously live in production during Phase 4/5 verification and both mutate the same upstream room state (e.g., both independently claim the same sign-in reward during a side-by-side test), a double-claim could occur upstream even though neither codebase is "wrong" in isolation. **Mitigation**: Phase 4 verification should prefer read-only comparison wherever a use case is a Query; for Commands (state-mutating), verify via a scratch/test account, not against a real user session that's also being served by the legacy path simultaneously.
+
+## R7 — Team/tooling risk: this is a large surface to build without regressing legacy behavior (structural, not technical)
+
+83 endpoints, 5 aggregates, ~90 legacy DTOs to reconcile. `07-migration-roadmap.md`'s Phase 3 sequencing (smallest/lowest-risk capability first) is the primary mitigation. The secondary mitigation, consistent with how the prior refactor pass on the legacy codebase operated successfully across 10 commits: **never touch more than one capability per commit, always verify `./gradlew compileJava -x test` and `./gradlew test` both pass before moving to the next, and write the 5-part explanation (problem / why better / SOLID / Micronaut / trade-offs) for every commit** — the same discipline, just applied to new-code construction instead of in-place refactoring.
