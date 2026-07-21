@@ -129,7 +129,14 @@ final class HtImNotifyMapper {
      */
     private ImRealtimeEvent mapVoiceRoom(JsonNode root, Header h) {
         JsonNode room = root.path("voice_room");
-        String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
+        // This envelope has no root-level from_id — the h.fromId() envelope-header fallback
+        // used by mapText/mapImage/etc. is WRONG here: it's the binary envelope's routing
+        // field, not the sender's uid (live-captured proof: header fromId=15211 for a room
+        // actually owned/shared by uid 168995401). The correct sender identity for a
+        // voice-room share is IMVoiceRoomBean's own user_id field (SerializedName "user_id",
+        // smali_classes8/.../voiceRoom/IMVoiceRoomBean.smali) — the room owner, who is also
+        // who shared it in this DM-share shape.
+        String fromId       = textOr(root, "from_id", textOr(room, "user_id", String.valueOf(h.fromId())));
         String fromNickname = textOr(root, "from_nickname", textOr(room, "from_nickname", ""));
         String headUrl       = nullableText(room, "head_url");
         String cname         = textOr(room, "cname", "");
@@ -148,7 +155,10 @@ final class HtImNotifyMapper {
      *  {@code prvgmsgpacket.js}'s {@code type === 'live_link'} outbound case. */
     private ImRealtimeEvent mapLiveLink(JsonNode root, Header h) {
         JsonNode room = root.path("live_link");
-        String fromId       = textOr(root, "from_id", String.valueOf(h.fromId()));
+        // Same envelope-header pitfall as mapVoiceRoom above — prefer IMLiveLinkBean's own
+        // host_id (SerializedName "host_id", smali_classes23/.../liveLink/IMLiveLinkBean.smali)
+        // over the binary envelope's unrelated routing fromId.
+        String fromId       = textOr(root, "from_id", textOr(room, "host_id", String.valueOf(h.fromId())));
         String fromNickname = textOr(root, "from_nickname", textOr(room, "from_nickname", ""));
         String headUrl       = nullableText(room, "head_url");
         String cname         = textOr(room, "cname", "");
