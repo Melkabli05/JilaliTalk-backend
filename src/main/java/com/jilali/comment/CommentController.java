@@ -6,7 +6,6 @@ import com.jilali.comment.dto.BffSendCommentRequest;
 import com.jilali.comment.dto.CaptionHistoryResponse;
 import com.jilali.comment.dto.CaptionSwitchRequest;
 import com.jilali.comment.dto.Comment;
-import com.jilali.comment.dto.CommentDto;
 import com.jilali.comment.dto.CommentListDto;
 import com.jilali.comment.dto.SendCommentRequest;
 import com.jilali.comment.dto.SendCommentResponse;
@@ -64,34 +63,10 @@ public class CommentController {
                                         @QueryValue @NotBlank String cname) {
         var upstream = JilaliResponses.unwrap(client.comments(busiType, cname));
         return new CommentListDto(
-                upstream.items().stream().map(this::toDto).toList(),
+                upstream.items().stream().map(Comment::fromWireSeconds).toList(),
                 upstream.hasNext(),
                 upstream.oldestId()
         );
-    }
-
-    /** Converts an upstream Comment (createdAt/updatedAt in Unix seconds) to CommentDto (milliseconds). */
-    private CommentDto toDto(Comment c) {
-        return new CommentDto(
-                c.id(), c.createdAt() * 1000L, c.updatedAt() * 1000L,
-                c.cname(), c.busiType(), c.userId(), c.nickname(), c.headUrl(),
-                c.nationality(), c.role(), c.vipType(), toMsgDto(c.msg()), c.dayRankLevel(),
-                c.giftLevel(), c.fgLevel(), c.fgName(), c.fgIsActive(), c.bubbleId(),
-                c.bubbleUrl(), c.bubbleColor(), c.hitBad(), c.bubbleAnimalType(),
-                c.bubbleAnimalUrl(), c.vipLogo(), c.vipLogoAnim(), c.expireAt(), c.medalWallIcon()
-        );
-    }
-
-    private CommentDto.Msg toMsgDto(Comment.Msg msg) {
-        if (msg == null) return null;
-        return new CommentDto.Msg(
-                msg.text() == null ? null : new CommentDto.Msg.Text(msg.text().text()),
-                toReplyInfoDto(msg.replyInfo()));
-    }
-
-    private CommentDto.Msg.ReplyInfo toReplyInfoDto(Comment.Msg.ReplyInfo r) {
-        if (r == null) return null;
-        return new CommentDto.Msg.ReplyInfo(r.msgId(), r.fromId(), r.fromNickname(), r.text(), r.msgType());
     }
 
     private static final DateTimeFormatter SEND_TIME_FMT =

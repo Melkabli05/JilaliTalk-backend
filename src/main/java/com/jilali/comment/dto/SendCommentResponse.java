@@ -11,7 +11,7 @@ import io.micronaut.serde.annotation.Serdeable;
  * populated when the upstream response happens to include one, since the comment endpoint's
  * upstream response shape isn't documented and callers must not depend on it being present.
  * <p>
- * Deliberately no {@code @JsonProperty} renames — see CommentDto's field naming, where several
+ * Deliberately no {@code @JsonProperty} renames — see {@code Comment}'s field naming, where several
  * such overrides aren't currently honored by the running server (confirmed by curl against the
  * live GET /comments response returning raw Java field names, not the annotated ones). Plain
  * field names sidestep that uncertainty entirely rather than adding one more unverified rename.

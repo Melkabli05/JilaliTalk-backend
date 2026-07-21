@@ -7,17 +7,17 @@ import io.micronaut.serde.annotation.Serdeable;
 import java.util.List;
 
 /**
- * Comment list DTO — server-side variant with {@code created_at_ms} / {@code updated_at_ms}
- * in milliseconds (Unix seconds × 1000). Used by the {@code GET /api/comments} endpoint so the
- * frontend receives JS-compatible timestamps without any {@code map()} transform.
+ * Comment list DTO returned by the {@code GET /api/comments} endpoint. Carries the same
+ * {@code Comment} record the upstream returns, with timestamps already rescaled to milliseconds
+ * via {@link Comment#fromWireSeconds(Comment) Comment.fromWireSeconds}.
  */
 @Serdeable
 public record CommentListDto(
-        @Nullable List<CommentDto> items,
+        @Nullable List<Comment> items,
         @JsonProperty("has_next") boolean hasNext,
         @JsonProperty("oldest_id") @Nullable String oldestId) {
 
-    public List<CommentDto> items() {
+    public List<Comment> items() {
         return items == null ? List.of() : items;
     }
 }

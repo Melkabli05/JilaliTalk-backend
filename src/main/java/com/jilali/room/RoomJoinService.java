@@ -3,7 +3,6 @@ package com.jilali.room;
 import com.jilali.client.JilaliClient;
 import com.jilali.client.JilaliResponses;
 import com.jilali.comment.dto.Comment;
-import com.jilali.comment.dto.CommentDto;
 import com.jilali.comment.dto.CommentListDto;
 import com.jilali.comment.dto.CommentListResponse;
 import com.jilali.core.JilaliProperties;
@@ -127,7 +126,7 @@ public class RoomJoinService {
                     stageUsersTask.get(),
                     audienceUsersTask.get(),
                     new CommentListDto(
-                            upstreamComments.items().stream().map(this::toCommentDto).toList(),
+                            upstreamComments.items().stream().map(Comment::fromWireSeconds).toList(),
                             upstreamComments.hasNext(),
                             upstreamComments.oldestId()
                     )
@@ -192,27 +191,5 @@ public class RoomJoinService {
         return resp.withRtcToken(AgoraTokenCipher.decrypt(encrypted, key));
     }
 
-    /** Converts an upstream Comment (createdAt/updatedAt in Unix seconds) to CommentDto (milliseconds). */
-    private CommentDto toCommentDto(Comment c) {
-        return new CommentDto(
-                c.id(), c.createdAt() * 1000L, c.updatedAt() * 1000L,
-                c.cname(), c.busiType(), c.userId(), c.nickname(), c.headUrl(),
-                c.nationality(), c.role(), c.vipType(), toMsgDto(c.msg()), c.dayRankLevel(),
-                c.giftLevel(), c.fgLevel(), c.fgName(), c.fgIsActive(), c.bubbleId(),
-                c.bubbleUrl(), c.bubbleColor(), c.hitBad(), c.bubbleAnimalType(),
-                c.bubbleAnimalUrl(), c.vipLogo(), c.vipLogoAnim(), c.expireAt(), c.medalWallIcon()
-        );
-    }
-
-    private CommentDto.Msg toMsgDto(Comment.Msg msg) {
-        if (msg == null) return null;
-        return new CommentDto.Msg(
-                msg.text() == null ? null : new CommentDto.Msg.Text(msg.text().text()),
-                toReplyInfoDto(msg.replyInfo()));
-    }
-
-    private CommentDto.Msg.ReplyInfo toReplyInfoDto(Comment.Msg.ReplyInfo r) {
-        if (r == null) return null;
-        return new CommentDto.Msg.ReplyInfo(r.msgId(), r.fromId(), r.fromNickname(), r.text(), r.msgType());
-    }
+    /** Seconds-to-milliseconds conversion now lives on the record itself: {@link Comment#fromWireSeconds}. */
 }

@@ -34,6 +34,8 @@ See the dependency-analysis report. `JilaliClient.java` alone imports ~65 DTO cl
 
 **Fix**: single record + a custom Micronaut Serde timestamp serializer.
 
+**Status**: ✅ consolidated in Refactor 5 (2026-07-21). The single canonical record at `com.jilali.comment.dto.Comment` now exposes timestamps in epoch milliseconds (the unit the Angular frontend wants) with a static `Comment.fromWireSeconds(Comment)` factory that re-scales the upstream's Unix-seconds values during deserialization. `CommentDto` deleted, both hand-written mappers deleted (~30 redundant lines removed). Behavior preserved: the wire still carries `created_at` / `updated_at` in seconds, the consumer still receives them in milliseconds — the conversion is just at the single record's static factory now.
+
 ## 4. `signin/dto/RewardItem` ↔ `room/dto/RoomLevelConfigResponse.RewardItem` (MEDIUM)
 
 Exact 8-field clone, only `multi_name` nullability differs.
