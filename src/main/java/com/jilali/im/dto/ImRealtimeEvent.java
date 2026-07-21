@@ -19,7 +19,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = ImRealtimeEvent.ModRemoved.class,           name = "mod_removed"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.ModUnmuted.class,           name = "mod_unmuted"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.Follow.class,               name = "follow"),
-    @JsonSubTypes.Type(value = ImRealtimeEvent.GroupMessage.class,         name = "group_message"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.TypingIndicator.class,      name = "typing_indicator"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.ReadReceipt.class,          name = "read_receipt"),
     @JsonSubTypes.Type(value = ImRealtimeEvent.MessageAck.class,            name = "message_ack"),
@@ -41,7 +40,6 @@ public sealed interface ImRealtimeEvent permits
     ImRealtimeEvent.ModRemoved,
     ImRealtimeEvent.ModUnmuted,
     ImRealtimeEvent.Follow,
-    ImRealtimeEvent.GroupMessage,
     ImRealtimeEvent.TypingIndicator,
     ImRealtimeEvent.ReadReceipt,
     ImRealtimeEvent.MessageAck,
@@ -112,16 +110,6 @@ public sealed interface ImRealtimeEvent permits
     record ModUnmuted(String userId) implements ImRealtimeEvent {}
 
     record Follow(String userId, String nickname, String headUrl, int status) implements ImRealtimeEvent {} // 1 = followed you, 2 = followed back
-
-    /**
-     * Reserved for API back-compat with the frontend's {@code 'group_message'} union variant
-     * ({@code im-events.ts:28}). The current pipeline no longer emits this — group-DM sync
-     * frames are routed through the same F2 decoder as 1:1 DMs and produce standard
-     * {@link TextMessage}/{@link ImageMessage}/etc. events with {@code msg_type} preserved. Kept
-     * in the union so existing frontend switches don't break; safe to remove once the frontend
-     * drops the variant.
-     */
-    record GroupMessage(String senderId, String senderName, String roomName, String text) implements ImRealtimeEvent {}
 
     record TypingIndicator(String fromUserId, boolean isTyping) implements ImRealtimeEvent {}
 
