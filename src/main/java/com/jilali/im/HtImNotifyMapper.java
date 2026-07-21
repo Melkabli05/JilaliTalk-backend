@@ -135,7 +135,12 @@ final class HtImNotifyMapper {
         String cname         = textOr(room, "cname", "");
         String msgId          = nullableText(root, "msg_id");
         int count             = room.path("active_number").asInt(0);
-        return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, count, msgId);
+        // Field keys match IMVoiceRoomBean's @SerializedName values exactly
+        // (smali_classes8/.../voiceRoom/IMVoiceRoomBean.smali: name, topic_name, background_url).
+        String roomName       = nullableText(room, "name");
+        String topicName      = nullableText(room, "topic_name");
+        String backgroundUrl  = nullableText(room, "background_url");
+        return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, count, msgId, roomName, topicName, backgroundUrl);
     }
 
     /** Live/video-room counterpart of {@link #mapVoiceRoom} — same envelope shape with the room
@@ -148,7 +153,13 @@ final class HtImNotifyMapper {
         String headUrl       = nullableText(room, "head_url");
         String cname         = textOr(room, "cname", "");
         String msgId          = nullableText(root, "msg_id");
-        return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId);
+        // Field keys match IMLiveLinkBean's @SerializedName values exactly
+        // (smali_classes23/.../liveLink/IMLiveLinkBean.smali: activity_name, topic_name,
+        // live_polymeric_background_pic).
+        String activityName  = nullableText(room, "activity_name");
+        String topicName     = nullableText(room, "topic_name");
+        String backgroundUrl = nullableText(room, "live_polymeric_background_pic");
+        return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId, activityName, topicName, backgroundUrl);
     }
 
     /** Like {@link #nullableText}, but converts non-string JSON values (e.g. {@code sex} is an
@@ -175,11 +186,19 @@ final class HtImNotifyMapper {
             String fromNickname = textOr(root, "from_nickname", textOr(root, "nickname", ""));
             String headUrl      = root.path("head_url").isNull() ? null : textOr(root, "head_url", null);
             String msgId        = nullableText(root, "msg_id");
+            // This flat/root-level shape (vs. mapVoiceRoom/mapLiveLink's nested voice_room/
+            // live_link envelope) has never been observed live carrying name/topic_name/
+            // background_url siblings — passing null rather than guessing field names with
+            // no wire evidence. Best-effort fallback: try the same keys anyway in case this
+            // shape does carry them (harmless if absent — nullableText returns null).
+            String roomName      = nullableText(root, "name");
+            String topicName     = nullableText(root, "topic_name");
+            String backgroundUrl = nullableText(root, "background_url");
             if (root.has("count") || root.has("voice_count")) {
                 int cnt = root.has("count") ? root.path("count").asInt(0) : root.path("voice_count").asInt(0);
-                return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, cnt, msgId);
+                return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, cnt, msgId, roomName, topicName, backgroundUrl);
             }
-            return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId);
+            return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId, roomName, topicName, backgroundUrl);
         }
 
         JsonNode info = root.path("notify_info");

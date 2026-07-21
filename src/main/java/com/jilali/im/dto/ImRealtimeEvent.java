@@ -74,9 +74,26 @@ public sealed interface ImRealtimeEvent permits
         String msgId
     ) implements ImRealtimeEvent {}
 
-    record VoiceRoomShared(String fromUserId, String fromNickname, String cname, String headUrl, Integer count, String msgId) implements ImRealtimeEvent {}
+    /**
+     * roomName/topicName/backgroundUrl mirror the real Android client's share-bubble fields
+     * (IMVoiceRoomBean: {@code name}/{@code topic_name}/{@code background_url}, rendered by
+     * ChatVoiceRoomDelegate via {@code LiveCommunicationItemView.setRoomName}/background —
+     * smali_classes8/.../voiceRoom/IMVoiceRoomBean.smali). Previously dropped entirely, so
+     * the share card only ever showed a generic "X shared a voice room" — no room title,
+     * topic, or background image, even though the upstream payload always carries them.
+     */
+    record VoiceRoomShared(
+        String fromUserId, String fromNickname, String cname, String headUrl, Integer count, String msgId,
+        String roomName, String topicName, String backgroundUrl
+    ) implements ImRealtimeEvent {}
 
-    record LiveRoomShared(String fromUserId, String fromNickname, String cname, String headUrl, String msgId) implements ImRealtimeEvent {}
+    /** activityName/topicName/backgroundUrl mirror IMLiveLinkBean's {@code activity_name}/
+     *  {@code topic_name}/{@code live_polymeric_background_pic} (same delegate pattern as
+     *  {@link VoiceRoomShared} — see smali_classes23/.../liveLink/IMLiveLinkBean.smali). */
+    record LiveRoomShared(
+        String fromUserId, String fromNickname, String cname, String headUrl, String msgId,
+        String activityName, String topicName, String backgroundUrl
+    ) implements ImRealtimeEvent {}
 
     record ProfileVisit(String visitorUserId, String nickname, String headUrl) implements ImRealtimeEvent {}
 
