@@ -28,11 +28,11 @@ import java.util.Map;
 public class RoomUpstreamAdapter implements RoomUpstreamPort {
 
     private final RoomJilaliClient client;
-    private final JilaliProperties properties;
+    private final byte[] agoraCipherKey;
 
     public RoomUpstreamAdapter(RoomJilaliClient client, JilaliProperties properties) {
         this.client = client;
-        this.properties = properties;
+        this.agoraCipherKey = properties.agoraCipherKey().getBytes(StandardCharsets.US_ASCII);
     }
 
     @Override
@@ -95,8 +95,7 @@ public class RoomUpstreamAdapter implements RoomUpstreamPort {
             throw new JilaliException("Upstream returned no RTC info for channel", HttpStatus.BAD_GATEWAY);
         }
         var encrypted = resp.channelInfo().rtcInfo().token();
-        byte[] key = properties.agoraCipherKey().getBytes(StandardCharsets.US_ASCII);
-        return resp.withRtcToken(AgoraTokenCipher.decrypt(encrypted, key));
+        return resp.withRtcToken(AgoraTokenCipher.decrypt(encrypted, agoraCipherKey));
     }
 
     @Override

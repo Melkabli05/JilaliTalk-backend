@@ -6,6 +6,7 @@ import com.jilali.roomcontext.infrastructure.dto.signin.ClaimRewardRequest;
 import com.jilali.roomcontext.infrastructure.dto.signin.ClaimTaskRewardRequest;
 import com.jilali.roomcontext.infrastructure.dto.signin.RoomLevelRewardResponse;
 import com.jilali.roomcontext.infrastructure.dto.signin.VoiceSignPanelResponse;
+import com.jilali.roomcontext.infrastructure.dto.signin.VoiceTasksResponse;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
@@ -22,7 +23,7 @@ public interface SignInJilaliClient {
     JilaliEnvelope<VoiceSignPanelResponse> voiceSignPanel(@QueryValue String cname);
 
     @Get("/voice/tasks")
-    JilaliEnvelope<Object> voiceTasks();
+    JilaliEnvelope<VoiceTasksResponse> voiceTasks();
 
     @Post("/voice/task/reward")
     JilaliEnvelope<Object> voiceTaskReward(@Body ClaimTaskRewardRequest body);

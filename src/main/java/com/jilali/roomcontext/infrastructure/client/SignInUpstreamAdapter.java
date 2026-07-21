@@ -9,9 +9,6 @@ import com.jilali.roomcontext.infrastructure.dto.signin.VoiceSignPanelResponse;
 import com.jilali.roomcontext.infrastructure.dto.signin.VoiceTasksResponse;
 import jakarta.inject.Singleton;
 
-import java.util.List;
-import java.util.Map;
-
 @Singleton
 public class SignInUpstreamAdapter implements SignInUpstreamPort {
 
@@ -27,10 +24,8 @@ public class SignInUpstreamAdapter implements SignInUpstreamPort {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public VoiceTasksResponse tasks() {
-        var resp = (Map<String, Object>) JilaliResponses.unwrap(client.voiceTasks());
-        return new VoiceTasksResponse((List<Map<String, Object>>) resp.get("items"));
+        return JilaliResponses.unwrap(client.voiceTasks());
     }
 
     @Override

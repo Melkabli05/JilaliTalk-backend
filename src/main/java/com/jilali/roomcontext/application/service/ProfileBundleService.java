@@ -14,7 +14,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.StructuredTaskScope;
+import java.util.function.Function;
 
 /** Extracted natively for this bounded context - same StructuredTaskScope fan-out shape as the
  *  legacy user.ProfileBundleService, with zero dependency on client.JilaliGateway/
@@ -74,42 +76,34 @@ public class ProfileBundleService {
     }
 
     private ProfileStatsResponse.StatsData fetchOwnStatsOrNull() {
-        try {
-            var resp = profileClient.stats(Map.of("client_os_lang", "English"));
-            return resp != null ? resp.data() : null;
-        } catch (RuntimeException e) {
-            log.warn("Failed to fetch own profile stats for bundle, degrading to null", e);
-            return null;
-        }
+        return fetchOrNull("own profile stats",
+                () -> profileClient.stats(Map.of("client_os_lang", "English")), ProfileStatsResponse::data);
     }
 
     private ProfileLimitationsResponse.LimitationsData fetchLimitationsOrNull() {
-        try {
-            var resp = profileClient.limitations();
-            return resp != null ? resp.data() : null;
-        } catch (RuntimeException e) {
-            log.warn("Failed to fetch profile limitations for bundle, degrading to null", e);
-            return null;
-        }
+        return fetchOrNull("profile limitations",
+                profileClient::limitations, ProfileLimitationsResponse::data);
     }
 
     private PayChatInfoResponse.PayChatInfoData fetchPayChatInfoOrNull(long targetUserId) {
-        try {
-            var resp = profileClient.payChatInfo(targetUserId);
-            return resp != null ? resp.data() : null;
-        } catch (RuntimeException e) {
-            log.warn("Failed to fetch pay-chat info for bundle (userId={}), degrading to null", targetUserId, e);
-            return null;
-        }
+        return fetchOrNull("pay-chat info (userId=" + targetUserId + ")",
+                () -> profileClient.payChatInfo(targetUserId), PayChatInfoResponse::data);
     }
 
     private ReminderMomentResponse.ReminderMomentData fetchReminderMomentOrNull(long targetUserId) {
+        return fetchOrNull("reminder-moment (userId=" + targetUserId + ")",
+                () -> profileClient.reminderMoment(targetUserId), ReminderMomentResponse::data);
+    }
+
+    private <R, T> T fetchOrNull(String description, Callable<R> call, Function<R, T> dataOf) {
         try {
-            var resp = profileClient.reminderMoment(targetUserId);
-            return resp != null ? resp.data() : null;
+            R resp = call.call();
+            return resp != null ? dataOf.apply(resp) : null;
         } catch (RuntimeException e) {
-            log.warn("Failed to fetch reminder-moment for bundle (userId={}), degrading to null", targetUserId, e);
+            log.warn("Failed to fetch {} for bundle, degrading to null", description, e);
             return null;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }
