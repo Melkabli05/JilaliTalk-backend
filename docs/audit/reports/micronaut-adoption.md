@@ -21,15 +21,17 @@
 
 ### 1. Reconnect / retry
 
-**Currently**: `htIm/HtImUpstreamConnector` and `realtime/HtLiveHubUpstreamConnector` each implement their own exponential-backoff reconnect loop, sharing `core/ws/ExponentialBackoff.java`.
+**Currently**: `htIm/HtImUpstreamConnector` and `realtime/HtLiveHubUpstreamConnector` each implement their own exponential-backoff reconnect loop, sharing `platform.reconnect.ReconnectStrategy` (promoted from `core/ws/ExponentialBackoff.java` in Refactor 4).
 
 **Micronaut offer**: `@Retryable` (or `io.micronaut.retry.annotation.Retryable`) on a thin reconnect operation, `Backoff` configurations.
 
-**Refactor**: with the shared `UpstreamWebSocketConnector<TEvent>` base (already in the target architecture), give its `connect()` method `@Retryable(maxAttempts=Integer.MAX_VALUE, delay=..., maxDelay=...)` and remove the custom `ExponentialBackoff`. The `reconnectInBackground()` method becomes the one call that catches the final-exhaustion exception.
+**Status (Refactor 10)**: ✅ Partially adopted. The `micronaut-retry` dependency was added to `build.gradle`, and a first concrete `@Retryable` usage now exists: `platform.reconnect.ImReloginRunner.attemptRelogin(long)` (the IM channel's status-105 auto-relogin HTTP call) is annotated `@Retryable(attempts="3", delay="500ms", maxDelay="2s", multiplier="2.0", includes={IOException, TimeoutException, HttpClientResponseException})`, replacing a bare single-attempt `authClient.login(...)` call that previously had zero resilience against a transient upstream blip. This also collapsed 3 connector constructor params (`HelloTalkAuthClient`, `hellotalkEmail`, `hellotalkPassword`) into one (`ImReloginRunner`).
 
-**Files affected**: `core/ws/ExponentialBackoff.java`, `HtImUpstreamConnector.java` (lines 92-122, the `attemptConnect`/`reconnectInBackground`), `RoomEventSource.java` (the same pattern).
+**Still open**: the full WebSocket reconnect loop (`reconnectInBackground()` in both connectors) remains manual — it is NOT a simple method-level retry candidate because it wraps a whole connection lifecycle (socket handshake + login packet + heartbeat start), not a single idempotent call. This is still gated on the `UpstreamWebSocketConnector<TEvent>` base-class extraction (Phase 3) so the reconnect trigger point is unified across both connectors before converting it to `@Retryable`.
 
-**Benefit**: removes a class and ~50 lines of custom code; uses the well-tested Micronaut retry.
+**Files affected**: `platform/reconnect/ImReloginRunner.java` (new), `HtImUpstreamConnector.java` (`attemptRelogin`, simplified), `ImEventSource.java` (constructor, simplified). `HtLiveHubUpstreamConnector`'s reconnect loop is untouched — LiveHub has no relogin flow (it's a public/visitor channel, no per-user JWT to refresh).
+
+**Benefit**: removes a manual single-attempt HTTP call with no resilience; the retry policy (3 attempts, exponential 500ms→2s) is now declarative and centrally readable instead of implicit ("if it fails once, give up").
 
 ### 2. Heartbeat / scheduled tasks
 

@@ -3,9 +3,8 @@ package com.jilali.im;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jilali.auth.HelloTalkAuthClient;
-import com.jilali.auth.dto.upstream.LoginResponse;
 import com.jilali.core.AuthTokenHolder;
+import com.jilali.platform.reconnect.ImReloginRunner;
 import com.jilali.platform.reconnect.ReconnectStrategy;
 import com.jilali.platform.websocket.WebSocketConnectionLifecycle;
 import com.jilali.core.ws.HeartbeatPump;
@@ -59,17 +58,12 @@ class HtImUpstreamConnector implements AutoCloseable {
     private final ObjectMapper om;
     private final HtImFrameDecoder decoder;
     private final HtImNotifyMapper notifyMapper;
-    /** Auto-relogin dependencies on status-105 (session mismatch). {@code authClient} is
-     *  {@code null} when the caller (ImEventSource) has no {@code HelloTalkAuthClient} bean to
-     *  hand us — never the case in practice, since it's always DI-provided — but kept nullable
-     *  defensively since this class isn't itself a managed bean. {@code email}/{@code password}
-     *  are blank when {@code jilali.hellotalk-email}/{@code hellotalk-password} aren't
-     *  configured, in which case relogin is skipped and status 105 falls back to a clean
-     *  disconnect (previous behavior). */
-    private final HelloTalkAuthClient authClient;
+    /** Auto-relogin on status-105 (session mismatch). {@code null} when {@code
+     *  jilali.hellotalk-email}/{@code hellotalk-password} aren't configured — {@link
+     *  ImReloginRunner} is then never instantiated (its own {@code @Requires}), and
+     *  status 105 falls back to a clean disconnect (previous behavior, unchanged). */
+    private final ImReloginRunner reloginRunner;
     private final AuthTokenHolder authTokenHolder;
-    private final String hellotalkEmail;
-    private final String hellotalkPassword;
 
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("im-hb");
@@ -86,8 +80,7 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     HtImUpstreamConnector(
         long userId, String jwt, String deviceId, String deviceModel, ObjectMapper om,
-        HelloTalkAuthClient authClient, AuthTokenHolder authTokenHolder,
-        String hellotalkEmail, String hellotalkPassword
+        ImReloginRunner reloginRunner, AuthTokenHolder authTokenHolder
     ) {
         this.userId       = userId;
         this.jwt          = jwt;
@@ -96,10 +89,8 @@ class HtImUpstreamConnector implements AutoCloseable {
         this.om           = om;
         this.decoder      = new HtImFrameDecoder(om);
         this.notifyMapper = new HtImNotifyMapper(userId);
-        this.authClient        = authClient;
-        this.authTokenHolder   = authTokenHolder;
-        this.hellotalkEmail    = hellotalkEmail;
-        this.hellotalkPassword = hellotalkPassword;
+        this.reloginRunner   = reloginRunner;
+        this.authTokenHolder = authTokenHolder;
     }
 
     void attach(Consumer<ImRealtimeEvent> eventListener, Runnable disconnectListener) {
@@ -263,18 +254,19 @@ class HtImUpstreamConnector implements AutoCloseable {
      * Status 105 means the upstream invalidated our session — typically the same HelloTalk
      * account logging in elsewhere (matching the reference client's "Logged in on another
      * device" toast, {@code scriptv2.js:4595}). Unlike the reference, which reloads the whole
-     * page to re-establish a session, we can recover in-process: run the same pre_login+login
-     * exchange {@link HelloTalkAuthClient#login} already implements for interactive signup,
-     * mint a fresh JWT, publish it to {@link AuthTokenHolder} so every other outbound call
-     * picks it up too, and reconnect this socket with it.
+     * page to re-establish a session, we can recover in-process: {@link ImReloginRunner} runs
+     * the same pre_login+login exchange {@code HelloTalkAuthClient.login} already implements
+     * for interactive signup (retrying transient failures via {@code @Retryable}), mints a
+     * fresh JWT, and we publish it to {@link AuthTokenHolder} so every other outbound call
+     * picks it up too, then reconnect this socket with it.
      *
      * <p>Falls back to a clean disconnect (the previous behavior) when no credentials are
-     * configured ({@code jilali.hellotalk-email}/{@code hellotalk-password} unset) or the
-     * relogin attempt itself fails — we never want to loop forever hammering a genuinely
-     * dead account.
+     * configured ({@code reloginRunner} is {@code null} — {@code jilali.hellotalk-email}/
+     * {@code hellotalk-password} unset) or the relogin attempt itself exhausts its retries —
+     * we never want to loop forever hammering a genuinely dead account.
      */
     private void attemptRelogin() {
-        if (hellotalkEmail.isBlank() || hellotalkPassword.isBlank()) {
+        if (reloginRunner == null) {
             log.warn("IM: no hellotalk-email/hellotalk-password configured, cannot auto-relogin uid={}", userId);
             close();
             return;
@@ -283,26 +275,21 @@ class HtImUpstreamConnector implements AutoCloseable {
         // called handleLoginResponse. CompletableFuture.runAsync uses the common pool, matching
         // the pattern reconnectInBackground() already uses for its own delayed retry.
         CompletableFuture.runAsync(() -> {
-            log.info("IM: attempting relogin after session mismatch uid={}", userId);
-            Optional<LoginResponse> result;
+            Optional<String> newJwt;
             try {
-                result = authClient.login(hellotalkEmail, hellotalkPassword);
+                newJwt = reloginRunner.attemptRelogin(userId);
             } catch (Exception e) {
-                log.error("IM: relogin threw uid={}: {}", userId, e.getMessage());
-                result = Optional.empty();
+                log.error("IM: relogin exhausted retries uid={}: {}", userId, e.getMessage());
+                newJwt = Optional.empty();
             }
-            LoginResponse.UserInfo userInfo = result
-                .map(LoginResponse::userInfo)
-                .filter(u -> u != null && u.jwt() != null && !u.jwt().isBlank())
-                .orElse(null);
-            if (userInfo == null) {
+            if (newJwt.isEmpty()) {
                 log.error("IM: relogin failed, giving up uid={}", userId);
                 close();
                 return;
             }
             log.info("IM: relogin succeeded uid={}, reconnecting", userId);
-            this.jwt = userInfo.jwt();
-            authTokenHolder.set(userInfo.jwt());
+            this.jwt = newJwt.get();
+            authTokenHolder.set(newJwt.get());
             // Close the dead socket without marking intentionalClose, so attemptConnect()'s
             // fresh login packet carries the new jwt instead of the reconnect loop giving up.
             WebSocket sock = ws;

@@ -14,7 +14,7 @@ Owns a single binary WebSocket connection to `wss://api-global.hellotalk8.com/ht
 - Outbound send for HTTP-originated packets (`sendOutbound`), heartbeat (`sendPing`).
 
 ## Public API
-- `HtImUpstreamConnector(long userId, String jwt, String deviceId, String deviceModel, ObjectMapper om, HelloTalkAuthClient authClient, AuthTokenHolder authTokenHolder, String hellotalkEmail, String hellotalkPassword)`.
+- `HtImUpstreamConnector(long userId, String jwt, String deviceId, String deviceModel, ObjectMapper om, ImReloginRunner reloginRunner, AuthTokenHolder authTokenHolder)` — **updated in Refactor 10**: the constructor's own `HelloTalkAuthClient authClient`/`String hellotalkEmail`/`String hellotalkPassword` fields collapsed into one `ImReloginRunner` (`@Nullable` — `null` when credentials aren't configured, since `ImReloginRunner`'s own `@Requires` gates its existence as a bean).
 - `void attach(Consumer<ImRealtimeEvent> eventListener, Runnable disconnectListener)`.
 - `CompletableFuture<Void> connect()`.
 - `void sendOutbound(byte[] data)`.
@@ -22,8 +22,8 @@ Owns a single binary WebSocket connection to `wss://api-global.hellotalk8.com/ht
 - Everything else private, plus inner `class Listener implements WebSocket.Listener`.
 
 ## Dependencies
-- Injected/collab: `HtImFrameDecoder`, `HtImNotifyMapper` (both `new`'d internally), `HelloTalkAuthClient`, `AuthTokenHolder`, `ObjectMapper`, `ApkSignatureGenerator`, `LoginResponse`.
-- Shared infra: `com.jilali.core.ws.ExponentialBackoff`, `HeartbeatPump`, `SequentialSender`.
+- Injected/collab: `HtImFrameDecoder`, `HtImNotifyMapper` (both `new`'d internally), `platform.reconnect.ImReloginRunner` (Refactor 10 — replaces the direct `HelloTalkAuthClient` + email/password dependency), `AuthTokenHolder`, `ObjectMapper`, `ApkSignatureGenerator`.
+- Shared infra: `com.jilali.platform.reconnect.ReconnectStrategy` (promoted from `core.ws.ExponentialBackoff` in Refactor 4), `com.jilali.platform.websocket.WebSocketConnectionLifecycle` (Refactor 6), `HeartbeatPump`, `SequentialSender`.
 - Static import of all `HtImPacketFramer` builders/constants.
 - JDK `java.net.http.WebSocket` client.
 - Depended on by: `ImEventSource` (constructs, attaches, connects, closes, sendOutbound). Grep-verified.

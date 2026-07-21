@@ -8,9 +8,12 @@ Promoted from `com.jilali.core.ws.ExponentialBackoff` in Refactor 4. Establishes
 
 - `public final class ReconnectStrategy` (immutable surface; mutable internal state)
 - `public ReconnectStrategy(Duration base, Duration cap)`
+- `public static ReconnectStrategy defaults()` — the 1s→30s shape both connectors use (added Refactor 8).
 - `public Duration nextDelay()` — advances the attempt counter; full jitter on the upper bound.
 - `public void reset()` — call after a successful reconnect so the next unrelated failure starts from `base`.
 - Package-private `static Duration boundFor(int attempt, Duration base, Duration cap)` — testable.
+
+Unit-tested at `src/test/java/com/jilali/platform/reconnect/ReconnectStrategyTest.java` (moved/renamed from the stale `core/ws/ExponentialBackoffTest` during Refactor 10 — the old test file referenced the deleted `ExponentialBackoff` class and had been silently broken since Refactor 4 because `./gradlew compileJava -x test` never compiles test sources).
 
 ## Dependencies
 
@@ -49,4 +52,4 @@ None.
 ## Refactoring recommendations
 
 1. **Medium**: when Phase 3 lands, delete this class in favor of `@Retryable` on the base class's connect method.
-2. **Low**: consider a `static standard()` factory for the common 1s→30s config (currently inlined in both callers).
+2. ✅ Done (Refactor 8): `defaults()` factory for the common 1s→30s config.

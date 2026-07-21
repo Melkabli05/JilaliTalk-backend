@@ -13,14 +13,14 @@ Singleton pub-sub bridge for the IM binary WebSocket channel. First browser subs
 - Expose `sendOutbound(byte[])` for `ImSendController`.
 
 ## Public API
-- `ImEventSource(JilaliProperties properties, AuthTokenHolder authToken, ObjectMapper om, ImEventEnricher enricher, HelloTalkAuthClient authClient)`.
+- `ImEventSource(JilaliProperties properties, AuthTokenHolder authToken, ObjectMapper om, ImEventEnricher enricher, @Nullable ImReloginRunner reloginRunner)` — **updated in Refactor 10**: `HelloTalkAuthClient authClient` replaced by `@Nullable ImReloginRunner`; the `hellotalkEmail`/`hellotalkPassword` fields are gone entirely (now owned by `ImReloginRunner`, sourced from `JilaliProperties` there instead of duplicated here).
 - `Flux<ImRealtimeEvent> subscribe()`.
 - `void unsubscribe()`.
 - `void sendOutbound(byte[] data)`.
 - Private: `emitAndTrackState`.
 
 ## Dependencies
-- Injected: `JilaliProperties`, `AuthTokenHolder`, `ObjectMapper`, `ImEventEnricher`, `HelloTalkAuthClient`.
+- Injected: `JilaliProperties`, `AuthTokenHolder`, `ObjectMapper`, `ImEventEnricher`, `platform.reconnect.ImReloginRunner` (nullable — absent when relogin credentials aren't configured).
 - Uses `UidExtractor`, constructs `HtImUpstreamConnector`, `ImRealtimeEvent`.
 - Depended on by: `ImSocketController` (subscribe/unsubscribe), `ImSendController` (sendOutbound). Grep-verified.
 

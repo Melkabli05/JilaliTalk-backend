@@ -1,11 +1,12 @@
 package com.jilali.im;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jilali.auth.HelloTalkAuthClient;
 import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.JilaliProperties;
 import com.jilali.core.UidExtractor;
 import com.jilali.im.dto.ImRealtimeEvent;
+import com.jilali.platform.reconnect.ImReloginRunner;
+import io.micronaut.core.annotation.Nullable;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,9 +37,11 @@ public class ImEventSource {
     private final String deviceModel;
     private final ObjectMapper om;
     private final ImEventEnricher enricher;
-    private final HelloTalkAuthClient authClient;
-    private final String hellotalkEmail;
-    private final String hellotalkPassword;
+    /** {@code null} when {@code jilali.hellotalk-email}/{@code hellotalk-password} aren't
+     *  configured — {@link ImReloginRunner}'s own {@code @Requires} means the bean simply
+     *  doesn't exist, and auto-relogin is unavailable (status 105 falls back to disconnect). */
+    @Nullable
+    private final ImReloginRunner reloginRunner;
 
     private final AtomicInteger subscriberCount = new AtomicInteger(0);
     private volatile HtImUpstreamConnector connector;
@@ -51,16 +54,14 @@ public class ImEventSource {
 
     public ImEventSource(
         JilaliProperties properties, AuthTokenHolder authToken, ObjectMapper om,
-        ImEventEnricher enricher, HelloTalkAuthClient authClient
+        ImEventEnricher enricher, @Nullable ImReloginRunner reloginRunner
     ) {
         this.authToken    = authToken;
         this.deviceId     = properties.deviceId();
         this.deviceModel  = properties.deviceModel();
         this.om           = om;
         this.enricher     = enricher;
-        this.authClient   = authClient;
-        this.hellotalkEmail    = properties.hellotalkEmail();
-        this.hellotalkPassword = properties.hellotalkPassword();
+        this.reloginRunner = reloginRunner;
         this.userId       = UidExtractor.uidAsLong(authToken.get(), om);
         log.info("ImEventSource: userId={}", userId);
     }
@@ -75,7 +76,7 @@ public class ImEventSource {
             // after a relogin (see HtImUpstreamConnector.attemptRelogin) picks up the new JWT.
             HtImUpstreamConnector upstream = new HtImUpstreamConnector(
                 userId, authToken.get(), deviceId, deviceModel, om,
-                authClient, authToken, hellotalkEmail, hellotalkPassword
+                reloginRunner, authToken
             );
             this.connector = upstream;
 
