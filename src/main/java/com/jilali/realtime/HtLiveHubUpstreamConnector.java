@@ -3,7 +3,7 @@ package com.jilali.realtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.jilali.core.ws.ExponentialBackoff;
+import com.jilali.platform.reconnect.ReconnectStrategy;
 import com.jilali.core.ws.HeartbeatPump;
 import com.jilali.core.ws.SequentialSender;
 import com.jilali.realtime.dto.RoomCcRealtimeEvent;
@@ -47,7 +47,7 @@ public class HtLiveHubUpstreamConnector implements AutoCloseable {
     private final ObjectMapper om;
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("livehub-hb");
-    private final ExponentialBackoff backoff = new ExponentialBackoff(Duration.ofSeconds(1), Duration.ofSeconds(30));
+    private final ReconnectStrategy backoff = new ReconnectStrategy(Duration.ofSeconds(1), Duration.ofSeconds(30));
 
     private volatile Consumer<RoomRealtimeEvent> eventListener;
     private volatile Consumer<RoomCcRealtimeEvent> ccEventListener;

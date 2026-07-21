@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.auth.HelloTalkAuthClient;
 import com.jilali.auth.dto.upstream.LoginResponse;
 import com.jilali.core.AuthTokenHolder;
-import com.jilali.core.ws.ExponentialBackoff;
+import com.jilali.platform.reconnect.ReconnectStrategy;
 import com.jilali.core.ws.HeartbeatPump;
 import com.jilali.core.ws.SequentialSender;
 import com.jilali.crypto.ApkSignatureGenerator;
@@ -72,7 +72,7 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("im-hb");
-    private final ExponentialBackoff backoff = new ExponentialBackoff(Duration.ofSeconds(1), Duration.ofSeconds(30));
+    private final ReconnectStrategy backoff = new ReconnectStrategy(Duration.ofSeconds(1), Duration.ofSeconds(30));
 
     private volatile Consumer<ImRealtimeEvent> eventListener;
     private volatile Runnable disconnectListener;
