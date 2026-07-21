@@ -35,6 +35,8 @@ Then the bulk of the work (Phase 3-4-5) can iterate safely.
 
 **Goal**: make it possible for `client/` to compile in isolation and for any feature to be packaged independently.
 
+**Status**: not started. Per the user's explicit instruction, Phase 1 (security/authorization fixes) is out of scope for this refactor pass — HelloTalk's real backend, not this proxy, is considered responsible for those concerns. Phase 2 was evaluated (see `dependency-analysis.md`'s "Scope/sequencing note") and deliberately deferred rather than attempted in the same pass as the smaller refactors (1-11) that have shipped: it touches 7 injection sites including two services (`RoomJoinService`, `SigninController`) with delicate `StructuredTaskScope` parallel fan-out, and a prior attempt in this same session to mechanically restructure just 2 files of WebSocket-lifecycle code in one sitting produced broken code that had to be reverted. Recommended execution when picked up: one feature slice per commit (comment → manager → stage → ... ), never all 8 at once.
+
 | Task | Files | Acceptance criterion |
 |---|---|---|
 | 2.1 Move wire-only DTOs from feature packages to `platform.upstream-dtos` | `comment.dto.*`, `manager.dto.*`, `room.dto.*` (the wire-bearing subset), `signin.dto.*`, `stage.dto.*`, `user.dto.*` (the wire subset), `vip.dto.*` (the wire subset) | DTOs whose ONLY consumer is `client.JilaliClient`-style upstream interfaces are moved to `platform.upstream-dtos`. DTOs whose consumer is the Angular frontend stay where they are. |
