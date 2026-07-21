@@ -1,6 +1,7 @@
 package com.jilali.room.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.jilali.platform.models.RewardItem;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 
@@ -30,18 +31,6 @@ public record RoomLevelConfigResponse(
     public record ExpData(
         int exp,
         @JsonProperty("max_exp") int maxExp
-    ) {}
-
-    @Serdeable
-    public record RewardItem(
-        int id,
-        @JsonProperty("gift_id") int giftId,
-        int type,
-        @JsonProperty("card_type") int cardType,
-        String name,
-        int number,
-        String icon,
-        @JsonProperty("multi_name") @Nullable String multiName
     ) {}
 
     @Serdeable
