@@ -148,6 +148,8 @@ public class RoomController {
         if (revision <= sinceRevision) {
             return new AudienceReconcileResponse(revision, false, null);
         }
+        // get_type=[3] matches RoomApi.fetchAudienceUsers() on the frontend - see the same
+        // note on RoomJoinService.joinBundle's audience fetch.
         var roster = userUpstream.roomUsers(new RoomUserListRequest(List.of(3), cname, busiType));
         return new AudienceReconcileResponse(revision, true, roster.list());
     }
@@ -184,6 +186,11 @@ public class RoomController {
         return upstream.endChannel(request);
     }
 
+    // A bare `null` return from a Micronaut controller method is treated as "no route matched"
+    // and produces a 404, not a 200 with an empty body - even with @Nullable on the return type,
+    // which is only a compile-time hint. "User has no active channel" is the common, expected
+    // case (anyone about to create their first room hits this), so it must be an explicit 200
+    // with a null body, wrapped via HttpResponse.ok(), not a bare return of the port's result.
     @Get("/active")
     public HttpResponse<Map<String, Object>> userStartedChannel(@QueryValue(defaultValue = "2") int busiType) {
         return HttpResponse.ok(upstream.activeChannel(busiType));

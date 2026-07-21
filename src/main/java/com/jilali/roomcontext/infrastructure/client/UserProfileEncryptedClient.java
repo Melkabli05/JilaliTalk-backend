@@ -13,6 +13,7 @@ import com.jilali.roomcontext.infrastructure.dto.user.RoomUserProfileResponse;
 import com.jilali.roomcontext.infrastructure.dto.user.UserInfo;
 import com.jilali.roomcontext.infrastructure.dto.user.UserInfoRequest;
 import com.jilali.roomcontext.infrastructure.dto.user.UserInfoResponse;
+import io.micronaut.cache.annotation.Cacheable;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.client.BlockingHttpClient;
@@ -50,6 +51,14 @@ public class UserProfileEncryptedClient {
         this.userClient = userClient;
     }
 
+    /**
+     * Cached by {@code userId} alone (see the {@code user-info} cache in application.yml) - the
+     * returned profile doesn't depend on which caller asked, only on whose profile it is. Every
+     * room roster, comment author, and notification avatar look this same handful of user IDs
+     * up repeatedly, and each miss costs a full Curve25519 handshake + AES round-trip, so a
+     * short TTL removes most of that cost without serving badly stale profiles.
+     */
+    @Cacheable("user-info")
     public UserInfo fetchUserInfo(long userId) {
         var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
         var request = UserInfoRequest.forUser(userId);
@@ -57,6 +66,16 @@ public class UserProfileEncryptedClient {
 
         String token = authToken.get();
         String deviceId = properties.deviceId();
+        // x-ht-uid must identify who is making this call (the shared service account the JWT
+        // authenticates as), never the profile being looked up, and - critically - it must match
+        // the uid embedded in whichever token is actually attached below. This call always uses
+        // the fixed service-account token (not the caller's own forwarded JWT - see the cache
+        // doc above: the cache is keyed by userId alone, so the upstream identity used to fetch
+        // it must stay constant regardless of who's asking). CallerIdentity.currentUserId()
+        // prioritizes the caller's own inbound JWT when present, which mismatches this fixed
+        // token's uid - that mismatch is why every userInfo() call upstream was rejected with
+        // BAD_REQUEST. Deriving the uid from `token` itself keeps the header and the token
+        // self-consistent.
         Long callerUid = JwtUtil.uidFromBearer("Bearer " + token);
 
         HttpRequest<byte[]> httpRequest = HttpRequest.POST("/profile/v2/userinfo", encryptedPayload)

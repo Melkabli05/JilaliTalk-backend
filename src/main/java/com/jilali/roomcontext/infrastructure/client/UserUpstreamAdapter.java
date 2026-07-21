@@ -54,6 +54,14 @@ public class UserUpstreamAdapter implements UserUpstreamPort {
         return JilaliResponses.unwrap(client.batchUserStatus(request));
     }
 
+    /**
+     * Batch enrichment for user profiles. Resolves a list of user IDs to their full profiles in
+     * a single call - warm entries (already in the {@code user-info} cache) are free; cold
+     * entries pay one encrypted upstream call each. Replaces the per-user fetch pattern in the
+     * frontend's {@code AudienceStore.enrichAudienceUser()}, {@code StageStore.enrichStageUser()},
+     * and {@code ghost-audience.util.ts}, where each {@code user_join} event triggered a
+     * separate {@code GET /users/info?userId=...} call.
+     */
     @Override
     public EnrichBatchResponse enrichBatch(EnrichBatchRequest request) {
         return new EnrichBatchResponse(

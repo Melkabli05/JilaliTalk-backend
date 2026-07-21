@@ -25,7 +25,17 @@ import java.util.concurrent.StructuredTaskScope;
 /** Native reimplementation of the legacy room.RoomJoinService's bundled-join fan-out - same
  *  StructuredTaskScope pattern (room info sequenced first, then stage/audience/comments fanned
  *  out concurrently), with zero dependency on client.JilaliClient/client.JilaliResponses. The
- *  5xx-retry behavior for freshly-created rooms lives in the shared UpstreamRetry helper. */
+ *  5xx-retry behavior for freshly-created rooms lives in the shared UpstreamRetry helper.
+ *
+ * <p>Room info is deliberately sequenced <em>before</em>, not concurrent with, the other three
+ * calls. A captured real-client session shows the same ordering: after {@code user/join}, the
+ * app calls {@code voice_room_info}, then - roughly a second later, after several unrelated
+ * calls - {@code stage/list}. When this BFF used to fire all four concurrently, a room fetched
+ * immediately after creation would 500 on {@code stage/list} indefinitely (observed failing
+ * continuously for 13+ seconds with retries, never recovering) - i.e. not a brief propagation
+ * lag that a retry alone can wait out, but upstream appears to expect {@code voice_room_info}
+ * to have already completed for this room/session before {@code stage/list} et al. will serve
+ * it. */
 @Singleton
 public class RoomJoinService {
 
@@ -54,6 +64,8 @@ public class RoomJoinService {
         try (var scope = StructuredTaskScope.open()) {
             var stageUsersTask = scope.fork(() -> UpstreamRetry.withRetry(() ->
                     JilaliResponses.unwrap(stageClient.stageList(busiType, cname))));
+            // get_type=[3] matches RoomApi.fetchAudienceUsers() on the frontend - omitting it
+            // (null) would ask upstream for a different, undocumented default roster shape.
             var audienceUsersTask = scope.fork(() -> UpstreamRetry.withRetry(() -> JilaliResponses.unwrap(
                     userClient.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType)))));
             var commentsTask = scope.fork(() -> UpstreamRetry.withRetry(() ->

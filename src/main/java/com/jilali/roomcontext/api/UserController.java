@@ -26,7 +26,12 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 
 /** New-architecture controller, temporarily mounted under {@code /api/v2} - see
- *  TranslateController's Javadoc for the coexistence rationale. */
+ *  TranslateController's Javadoc for the coexistence rationale.
+ *
+ * <p>The room-scoped profile endpoint ({@code /{userId}/profile}) is decoded server-side via
+ * {@code Cc2018Cipher} (see {@link com.jilali.roomcontext.infrastructure.client.UserProfileEncryptedClient#fetchRoomUserProfile})
+ * rather than forwarded as raw bin/cc2018 bytes - it's the only upstream call that exposes the
+ * viewer's follow relation to an arbitrary user. */
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/v2/users")
 public class UserController {

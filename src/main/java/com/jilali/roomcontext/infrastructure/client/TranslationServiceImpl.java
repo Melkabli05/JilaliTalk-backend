@@ -51,6 +51,17 @@ public class TranslationServiceImpl implements TranslationService {
         this.mapper = mapper;
     }
 
+    /**
+     * Cache note: {@code @Cacheable("ai-translate")} is keyed on {@code (text, targetLang)}
+     * alone. Translation output has no per-user attribution in the product, and the upstream
+     * JWT/uid must be consistent with whichever token is in the cache key regardless of caller.
+     * So {@link #jwtUid} deliberately pins to the shared default token (unlike
+     * {@link CallerIdentity#currentUserId}, which intentionally prefers the inbound caller's
+     * token elsewhere) - switching this to a per-caller uid would silently corrupt the cache
+     * (different callers' results would collide) without changing any observable behavior.
+     *
+     * @throws JilaliException when the upstream call fails or returns no usable chunks
+     */
     @Override
     @Cacheable("ai-translate")
     public String translate(String text, String targetLang) {
@@ -66,6 +77,7 @@ public class TranslationServiceImpl implements TranslationService {
         return concatenateChunks(sse, session.sharedSecret());
     }
 
+    /** Resolves the shared default token's uid - see the cache-consistency note on {@link #translate}. */
     private long jwtUid() {
         Long uid = JwtUtil.uidFromBearer("Bearer " + authToken.get());
         return uid != null ? uid : 0L;

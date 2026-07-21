@@ -76,16 +76,26 @@ public class RoomUpstreamAdapter implements RoomUpstreamPort {
         return JilaliResponses.unwrap(client.categoryTopicList(busiType));
     }
 
+    /** A fresh-room 5xx on upstream's voice_room_info is recoverable with a short wait, not a
+     *  fatal "Room not found" - the frontend's create-room flow hits this single-call endpoint
+     *  directly via {@code fresh=true}, so without this retry a freshly created room's first
+     *  viewport load 500s and bounces the user back to home with a wrong "please create a new
+     *  one" message. */
     @Override
     public VoiceRoomInfoResponse voiceRoomInfoRaw(String cname) {
         return UpstreamRetry.withRetry(() -> JilaliResponses.unwrap(client.voiceRoomInfo(cname)));
     }
 
+    /** Same fresh-room retry note as {@link #voiceRoomInfoRaw} (this is the live/video-room
+     *  counterpart). */
     @Override
     public VoiceRoomInfoResponse liveRoomInfoRaw(String cname) {
         return UpstreamRetry.withRetry(() -> JilaliResponses.unwrap(client.liveRoomInfo(cname)));
     }
 
+    /** LiveHub hands back an AES-encrypted {@code rtc_info.token}; the browser Agora SDK needs
+     *  the plain token (it carries the App ID) or the gateway reports
+     *  {@code CAN_NOT_GET_GATEWAY_SERVER: invalid vendor key, can not find appid}. */
     @Override
     public VoiceRoomInfoResponse decryptRtcToken(VoiceRoomInfoResponse resp) {
         if (resp == null || resp.channelInfo() == null) {

@@ -78,6 +78,15 @@ public class ProfileUpstreamAdapter implements ProfileUpstreamPort {
         return profileClient.follow(new ProfileJilaliClient.FollowBody(body.followUid(), body.nickName()));
     }
 
+    /**
+     * Distinct upstream call from {@link #follow} - {@code /relation/follow} is idempotent, not
+     * a toggle (verified live: two consecutive calls both returned {@code data.status:1}).
+     * Un-following requires {@code /relation/unfollow}, whose response carries only
+     * {@code list_timestamp} (see {@link UnfollowResultResponse}); normalized here into the same
+     * {@link FollowResultResponse} shape {@link #follow} returns, with {@code data.status:0}, so
+     * the frontend has one response type for both directions and can keep reading
+     * {@code data.status} (1 = following, 0 = not) as the source of truth.
+     */
     @Override
     public FollowResultResponse unfollow(UnfollowRequest body) {
         UnfollowResultResponse result = profileClient.unfollow(
@@ -117,6 +126,17 @@ public class ProfileUpstreamAdapter implements ProfileUpstreamPort {
         return profileClient.stats(body);
     }
 
+    /**
+     * The real blocker here (confirmed live via TRACE-level upstream response capture, not
+     * assumed) is a missing {@code sign} field - the upstream rejects an unsigned request with
+     * {@code {"code":400,"msg":"no data currently"}}, a deliberately misleading message that
+     * reads like "you have zero visitors" but actually means "this request isn't authenticated."
+     * {@code sign = MD5(jid + jid + client_ts).toLowerCase()} where {@code jid} is this BFF's
+     * own account uid - see {@link Md5Util#visitorHistorySign} for the full smali citation. The
+     * smali also sends the same {@code client_ts} value in {@code update_ts}, not {@code 0}.
+     * Only {@code index} (pagination cursor) is genuinely caller-controlled; everything else
+     * about "who we are" is this BFF's own identity, matching how the IM login packet is built.
+     */
     @Override
     public VisitorsResponse visitors(VisitorHistoryRequest body) {
         long clientTs = System.currentTimeMillis();

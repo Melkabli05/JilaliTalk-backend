@@ -81,6 +81,9 @@ public class CommentController {
         return HttpResponse.ok(new SendCommentResponse(sentAt.toEpochMilli(), extractId(data)));
     }
 
+    /** Best-effort: upstream's sendComment response shape isn't documented, so this only
+     *  returns something when `data` turns out to be a JSON object with a recognizable id
+     *  field — anything else (null, a different shape) just means no bonus id, not an error. */
     @Nullable
     private String extractId(@Nullable Object data) {
         if (!(data instanceof Map<?, ?> map)) return null;
