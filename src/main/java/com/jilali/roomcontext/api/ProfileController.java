@@ -29,6 +29,7 @@ import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
+import jakarta.validation.Valid;
 
 import java.util.Map;
 
@@ -67,12 +68,12 @@ public class ProfileController {
     }
 
     @Post("/follow")
-    public FollowResultResponse follow(@Body FollowRequest body) {
+    public FollowResultResponse follow(@Valid @Body FollowRequest body) {
         return upstream.follow(body);
     }
 
     @Post("/unfollow")
-    public FollowResultResponse unfollow(@Body UnfollowRequest body) {
+    public FollowResultResponse unfollow(@Valid @Body UnfollowRequest body) {
         return upstream.unfollow(body);
     }
 
@@ -101,12 +102,12 @@ public class ProfileController {
     }
 
     @Post("/visitors")
-    public VisitorsResponse visitors(@Body VisitorHistoryRequest body) {
+    public VisitorsResponse visitors(@Valid @Body VisitorHistoryRequest body) {
         return upstream.visitors(body);
     }
 
     @Post("/edit")
-    public ProfileEditResponse edit(@Body ProfileEditRequest body) {
+    public ProfileEditResponse edit(@Valid @Body ProfileEditRequest body) {
         return upstream.edit(body);
     }
 
