@@ -2,6 +2,7 @@ package com.jilali.realtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jilali.platform.time.Seconds;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
@@ -339,7 +340,7 @@ public class HtNotifyMapper {
             info.path("raise_hand_count").asInt(0),
             textOr(info, "medal_wall_icon", null),
             info.path("joinTime").asLong(0),
-            info.path("created_at").asLong(0) * 1000L,
+            Seconds.toMillis(info.path("created_at").asLong(0)),
             info.path("pinned_status").asInt(0),
             textOr(info, "pinned_type", null),
             info.path("team_index").asInt(0),
@@ -385,8 +386,8 @@ public class HtNotifyMapper {
         // server_ts and send_time are siblings on the Android LiveWSSMessage sub-object; also
         // surface msg_model/source/from_profile_ts which the comment renderer uses to pick a
         // variant and gate the profile-tour badge.
-        long serverTime = msg.path("server_ts").asLong(0) * 1000L;
-        long sendTime   = msg.path("send_time").asLong(0) * 1000L;
+        long serverTime = Seconds.toMillis(msg.path("server_ts").asLong(0));
+        long sendTime   = Seconds.toMillis(msg.path("send_time").asLong(0));
 
         return new RoomRealtimeEvent.CommentEvent(
             id,
@@ -426,7 +427,7 @@ public class HtNotifyMapper {
             textOr(replyNode, "from_nickname", ""),
             textOr(replyNode, "text", ""),
             textOr(replyNode, "msg_type", "text"),
-            replyNode.path("send_time").asLong(0) * 1000L);
+            Seconds.toMillis(replyNode.path("send_time").asLong(0)));
     }
 
     // ---- Whole-entity mappers for unmapped LiveWSS* / LiveCCNotify siblings ----
@@ -497,8 +498,8 @@ public class HtNotifyMapper {
             textOr(info, "send_user_id", null),
             textOr(info, "send_nick_name", null),
             info.path("send_type").asInt(0),
-            info.path("vip_time").asLong(0) * 1000L,
-            info.path("show_time").asLong(0) * 1000L);
+            Seconds.toMillis(info.path("vip_time").asLong(0)),
+            Seconds.toMillis(info.path("show_time").asLong(0)));
     }
 
     /** LiveWSSCampResultEntity nested under {@code LiveWSSTreasureReward.camp_result}. */

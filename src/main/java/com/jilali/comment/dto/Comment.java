@@ -1,6 +1,7 @@
 package com.jilali.comment.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.jilali.platform.time.Seconds;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 
@@ -77,7 +78,7 @@ public record Comment(
      * without per-instance timestamp math.
      */
     public static Comment fromWireSeconds(Comment c) {
-        return c.withTimestamps(c.createdAt() * 1000L, c.updatedAt() * 1000L);
+        return c.withTimestamps(Seconds.toMillis(c.createdAt()), Seconds.toMillis(c.updatedAt()));
     }
 
     /** Re-emits the record with different timestamp values (used by {@link #fromWireSeconds}). */

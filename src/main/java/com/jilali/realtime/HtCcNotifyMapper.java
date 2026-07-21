@@ -2,6 +2,7 @@ package com.jilali.realtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jilali.platform.time.Seconds;
 import com.jilali.realtime.dto.RoomCcRealtimeEvent;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
@@ -161,7 +162,7 @@ public class HtCcNotifyMapper {
             case 12 -> new RoomCcRealtimeEvent.SubtitleExpired(
                 textOr(info, "cname", null),
                 // Android reads `expiredAt` as seconds since epoch (compared via `Date().time / 1000`).
-                info.path("expired_at").asLong(0) * 1000L);
+                Seconds.toMillis(info.path("expired_at").asLong(0)));
             // 5/7/9/10/11 are in the kill set on Android — surface the raw frame so a future
             // frontend consumer can drive the same unconditional teardown if needed.
             default -> raw(type, root);
@@ -178,11 +179,11 @@ public class HtCcNotifyMapper {
             textOr(info, "head_url", null),
             textOr(info, "nationality", null),
             info.path("role_type").asInt(0),
-            info.path("create_at").asLong(0) * 1000L,
-            info.path("update_at").asLong(0) * 1000L,
+            Seconds.toMillis(info.path("create_at").asLong(0)),
+            Seconds.toMillis(info.path("update_at").asLong(0)),
             info.path("result_id").asLong(0),
             info.has("enabled") && !info.path("enabled").isNull() ? info.path("enabled").asBoolean() : null,
-            info.has("expired_at") && !info.path("expired_at").isNull() ? info.path("expired_at").asLong() * 1000L : null);
+            info.has("expired_at") && !info.path("expired_at").isNull() ? Seconds.toMillis(info.path("expired_at").asLong()) : null);
     }
 
     private RoomCcRealtimeEvent.Raw raw(int type, JsonNode root) {
