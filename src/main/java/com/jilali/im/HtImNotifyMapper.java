@@ -23,7 +23,15 @@ final class HtImNotifyMapper {
             return switch (root.path("msg_type").asText()) {
                 case "text"              -> mapText(root, h);
                 case "image"             -> mapImage(root, h);
-                case "gift"              -> mapGift(root, h);
+                // Real wire value is "send_gift", not "gift" — confirmed at
+                // y41/l.smali:282 (const-string v0, "send_gift" registered immediately
+                // before ChatSendGiftDelegate at line 284, the same pattern every other
+                // msg_type entry in that dispatch table follows) and independently in
+                // old_hellotalk/scriptv2.js:4643 (`if (type === "send_gift")`). Our own
+                // outbound sender (ImSendController.java:140) already emits "send_gift"
+                // correctly — this inbound switch was the only place with the wrong
+                // label, silently dropping every incoming gift DM to `default -> null`.
+                case "send_gift"         -> mapGift(root, h);
                 case "introduction"      -> mapIntro(root, h);
                 case "voice_room"        -> mapVoiceRoom(root, h);
                 case "live_link"         -> mapLiveLink(root, h);
