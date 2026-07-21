@@ -1,7 +1,6 @@
 package com.jilali.roomcontext.infrastructure.client;
 
 import com.jilali.core.AuthTokenHolder;
-import com.jilali.core.JwtUtil;
 import com.jilali.roomcontext.application.port.out.VipUpstreamPort;
 import com.jilali.roomcontext.infrastructure.dto.vip.ReceiveFriendSentCardRequest;
 import com.jilali.roomcontext.infrastructure.dto.vip.UseVipExperienceCardRequest;
@@ -10,7 +9,6 @@ import com.jilali.roomcontext.infrastructure.dto.vip.VipExperienceCardRecordsReq
 import com.jilali.roomcontext.infrastructure.dto.vip.VipExperienceCardRecordsResponse;
 import com.jilali.roomcontext.infrastructure.dto.vip.VipFeatureRightRequest;
 import com.jilali.roomcontext.infrastructure.dto.vip.VipFeatureRightResponse;
-import io.micronaut.http.context.ServerRequestContext;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +55,7 @@ public class VipUpstreamAdapter implements VipUpstreamPort {
 
     @Override
     public boolean claimTrial() {
-        Long userId = currentUserId();
+        Long userId = CallerIdentity.currentUserId(authToken);
         if (userId == null) {
             return false;
         }
@@ -86,12 +84,5 @@ public class VipUpstreamAdapter implements VipUpstreamPort {
         var used = card.usedFeatures();
         return used == null || used.stream()
             .noneMatch(u -> VIP_TRIAL_SCENE_ID.equals(u.sceneId()) && VIP_TRIAL_FEATURE_ID.equals(u.featureId()));
-    }
-
-    private Long currentUserId() {
-        var inbound = ServerRequestContext.currentRequest().orElse(null);
-        String header = inbound == null ? null : inbound.getHeaders().get("authorization");
-        String token = header != null && !header.isBlank() ? header : "Bearer " + authToken.get();
-        return JwtUtil.uidFromBearer(token);
     }
 }

@@ -1,7 +1,7 @@
 package com.jilali.roomcontext.application.service;
 
 import com.jilali.core.AuthTokenHolder;
-import com.jilali.core.JwtUtil;
+import com.jilali.roomcontext.infrastructure.client.CallerIdentity;
 import com.jilali.roomcontext.infrastructure.client.ProfileJilaliClient;
 import com.jilali.roomcontext.infrastructure.client.UserProfileEncryptedClient;
 import com.jilali.roomcontext.infrastructure.dto.user.PayChatInfoResponse;
@@ -9,7 +9,6 @@ import com.jilali.roomcontext.infrastructure.dto.user.ProfileBundleResponse;
 import com.jilali.roomcontext.infrastructure.dto.user.ProfileLimitationsResponse;
 import com.jilali.roomcontext.infrastructure.dto.user.ProfileStatsResponse;
 import com.jilali.roomcontext.infrastructure.dto.user.ReminderMomentResponse;
-import io.micronaut.http.context.ServerRequestContext;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +36,7 @@ public class ProfileBundleService {
     }
 
     public ProfileBundleResponse bundle(long userId) {
-        Long callerUid = currentUserId();
+        Long callerUid = CallerIdentity.currentUserId(authToken);
         boolean isOwnProfile = callerUid != null && callerUid == userId;
 
         try (var scope = StructuredTaskScope.open()) {
@@ -72,13 +71,6 @@ public class ProfileBundleService {
         } catch (StructuredTaskScope.FailedException e) {
             throw new RuntimeException("Upstream fetch failed during profile bundle", e.getCause());
         }
-    }
-
-    private Long currentUserId() {
-        var inbound = ServerRequestContext.currentRequest().orElse(null);
-        String header = inbound == null ? null : inbound.getHeaders().get("authorization");
-        String token = header != null && !header.isBlank() ? header : "Bearer " + authToken.get();
-        return JwtUtil.uidFromBearer(token);
     }
 
     private ProfileStatsResponse.StatsData fetchOwnStatsOrNull() {

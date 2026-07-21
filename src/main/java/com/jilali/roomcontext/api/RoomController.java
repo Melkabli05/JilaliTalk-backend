@@ -2,10 +2,9 @@ package com.jilali.roomcontext.api;
 
 import com.jilali.realtime.RoomEventSource;
 import com.jilali.roomcontext.application.port.out.RoomUpstreamPort;
+import com.jilali.roomcontext.application.port.out.UserUpstreamPort;
 import com.jilali.roomcontext.application.service.RoomJoinService;
 import com.jilali.roomcontext.application.service.RoomsSearchService;
-import com.jilali.roomcontext.infrastructure.client.JilaliResponses;
-import com.jilali.roomcontext.infrastructure.client.UserJilaliClient;
 import com.jilali.roomcontext.infrastructure.dto.room.AudienceReconcileResponse;
 import com.jilali.roomcontext.infrastructure.dto.room.BatchQueryRequest;
 import com.jilali.roomcontext.infrastructure.dto.room.BatchQueryResponse;
@@ -49,8 +48,8 @@ import java.util.Map;
  * different subsystem from "the HTTP client to HelloTalk" this rebuild targets, and duplicating
  * the entire realtime WebSocket connector/pub-sub layer to avoid one 3-line method call would be
  * a large, unrelated, destabilizing undertaking for a still-live piece of infrastructure. The
- * actual upstream HTTP call in this same endpoint (the roster refetch) already goes through the
- * dedicated UserJilaliClient. */
+ * actual upstream HTTP call in this same endpoint (the roster refetch) already goes through
+ * UserUpstreamPort. */
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/v2/rooms")
 public class RoomController {
@@ -59,16 +58,16 @@ public class RoomController {
     private final RoomJoinService roomJoinService;
     private final RoomEventSource roomEventSource;
     private final RoomsSearchService roomsSearchService;
-    private final UserJilaliClient userClient;
+    private final UserUpstreamPort userUpstream;
 
     public RoomController(RoomUpstreamPort upstream, RoomJoinService roomJoinService,
                            RoomEventSource roomEventSource, RoomsSearchService roomsSearchService,
-                           UserJilaliClient userClient) {
+                           UserUpstreamPort userUpstream) {
         this.upstream = upstream;
         this.roomJoinService = roomJoinService;
         this.roomEventSource = roomEventSource;
         this.roomsSearchService = roomsSearchService;
-        this.userClient = userClient;
+        this.userUpstream = userUpstream;
     }
 
     @Get("/voice")
@@ -149,8 +148,7 @@ public class RoomController {
         if (revision <= sinceRevision) {
             return new AudienceReconcileResponse(revision, false, null);
         }
-        var roster = JilaliResponses.unwrap(
-            userClient.roomUserList(new RoomUserListRequest(List.of(3), cname, busiType)));
+        var roster = userUpstream.roomUsers(new RoomUserListRequest(List.of(3), cname, busiType));
         return new AudienceReconcileResponse(revision, true, roster.list());
     }
 

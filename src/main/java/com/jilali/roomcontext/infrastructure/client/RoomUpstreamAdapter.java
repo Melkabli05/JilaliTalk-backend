@@ -78,12 +78,12 @@ public class RoomUpstreamAdapter implements RoomUpstreamPort {
 
     @Override
     public VoiceRoomInfoResponse voiceRoomInfoRaw(String cname) {
-        return withUpstreamRetry(() -> JilaliResponses.unwrap(client.voiceRoomInfo(cname)));
+        return UpstreamRetry.withRetry(() -> JilaliResponses.unwrap(client.voiceRoomInfo(cname)));
     }
 
     @Override
     public VoiceRoomInfoResponse liveRoomInfoRaw(String cname) {
-        return withUpstreamRetry(() -> JilaliResponses.unwrap(client.liveRoomInfo(cname)));
+        return UpstreamRetry.withRetry(() -> JilaliResponses.unwrap(client.liveRoomInfo(cname)));
     }
 
     @Override
@@ -138,28 +138,5 @@ public class RoomUpstreamAdapter implements RoomUpstreamPort {
     @Override
     public Map<String, Object> latestSettings(int busiType) {
         return JilaliResponses.unwrap(client.userLatestChannel(busiType));
-    }
-
-    private <T> T withUpstreamRetry(java.util.concurrent.Callable<T> call) {
-        int maxAttempts = 4;
-        long delayMs = 700;
-        for (int attempt = 1; ; attempt++) {
-            try {
-                return call.call();
-            } catch (io.micronaut.http.client.exceptions.HttpClientResponseException e) {
-                boolean serverError = e.getStatus().getCode() >= 500;
-                if (!serverError || attempt >= maxAttempts) {
-                    throw e;
-                }
-                try {
-                    Thread.sleep(delayMs);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Interrupted during upstream retry", ie);
-                }
-            } catch (Exception e) {
-                throw new RuntimeException("Upstream call failed", e);
-            }
-        }
     }
 }
