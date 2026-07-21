@@ -79,18 +79,26 @@ public sealed interface ImRealtimeEvent permits
      * IMVoiceRoomBean.smali). Previously dropped entirely, so the share card only ever
      * showed a generic "X shared a voice room" — no room title or topic, even though the
      * upstream payload always carries them.
+     *
+     * <p>{@code ts} is the ORIGINAL send time (epoch ms, from the payload's {@code server_ts}),
+     * not "when we happened to decode this." Without it the frontend fell back to
+     * {@code Date.now()}, so offline packets HelloTalk's own server keeps redelivering on
+     * every reconnect (its offline-sync API has no incremental cursor — confirmed to match
+     * the reference client's own behavior in a prior audit) looked like a brand-new message
+     * arriving "just now" every single time the app opened, instead of showing their true,
+     * once-only send time.
      */
     record VoiceRoomShared(
         String fromUserId, String fromNickname, String cname, String headUrl, Integer count, String msgId,
-        String roomName, String topicName
+        String roomName, String topicName, long ts
     ) implements ImRealtimeEvent {}
 
     /** activityName/topicName mirror IMLiveLinkBean's {@code activity_name}/{@code topic_name}
      *  (same delegate pattern as {@link VoiceRoomShared} — see smali_classes23/.../liveLink/
-     *  IMLiveLinkBean.smali). */
+     *  IMLiveLinkBean.smali). {@code ts} — see {@link VoiceRoomShared#ts}. */
     record LiveRoomShared(
         String fromUserId, String fromNickname, String cname, String headUrl, String msgId,
-        String activityName, String topicName
+        String activityName, String topicName, long ts
     ) implements ImRealtimeEvent {}
 
     record ProfileVisit(String visitorUserId, String nickname, String headUrl) implements ImRealtimeEvent {}

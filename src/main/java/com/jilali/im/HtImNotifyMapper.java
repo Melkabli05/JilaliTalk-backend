@@ -146,7 +146,11 @@ final class HtImNotifyMapper {
         // (smali_classes8/.../voiceRoom/IMVoiceRoomBean.smali: name, topic_name).
         String roomName       = nullableText(room, "name");
         String topicName      = nullableText(room, "topic_name");
-        return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, count, msgId, roomName, topicName);
+        // server_ts is a root-level sibling of msg_type/msg_id (live-captured proof: raw envelope
+        // carries "server_ts":1784574725839 alongside "msg_type":"voice_room"), NOT nested under
+        // voice_room. Epoch-ms already, matching System.currentTimeMillis()'s unit.
+        long ts = root.path("server_ts").asLong(System.currentTimeMillis());
+        return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, count, msgId, roomName, topicName, ts);
     }
 
     /** Live/video-room counterpart of {@link #mapVoiceRoom} — same envelope shape with the room
@@ -166,7 +170,8 @@ final class HtImNotifyMapper {
         // (smali_classes23/.../liveLink/IMLiveLinkBean.smali: activity_name, topic_name).
         String activityName  = nullableText(room, "activity_name");
         String topicName     = nullableText(room, "topic_name");
-        return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId, activityName, topicName);
+        long ts = root.path("server_ts").asLong(System.currentTimeMillis());
+        return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId, activityName, topicName, ts);
     }
 
     /** Like {@link #nullableText}, but converts non-string JSON values (e.g. {@code sex} is an
@@ -200,11 +205,16 @@ final class HtImNotifyMapper {
             // does carry them (harmless if absent — nullableText returns null).
             String roomName      = nullableText(root, "name");
             String topicName     = nullableText(root, "topic_name");
+            // This is a live LiveHub-style push (not an offline-sync replay), so falling back to
+            // "now" when server_ts is absent is legitimately correct here — unlike
+            // mapVoiceRoom/mapLiveLink's offline path, where a missing timestamp would mask a
+            // stale redelivery as a fresh message.
+            long ts = root.path("server_ts").asLong(System.currentTimeMillis());
             if (root.has("count") || root.has("voice_count")) {
                 int cnt = root.has("count") ? root.path("count").asInt(0) : root.path("voice_count").asInt(0);
-                return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, cnt, msgId, roomName, topicName);
+                return new ImRealtimeEvent.VoiceRoomShared(fromId, fromNickname, cname, headUrl, cnt, msgId, roomName, topicName, ts);
             }
-            return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId, roomName, topicName);
+            return new ImRealtimeEvent.LiveRoomShared(fromId, fromNickname, cname, headUrl, msgId, roomName, topicName, ts);
         }
 
         JsonNode info = root.path("notify_info");
