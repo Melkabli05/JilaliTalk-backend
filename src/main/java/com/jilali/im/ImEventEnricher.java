@@ -1,9 +1,9 @@
 package com.jilali.im;
 
-import com.jilali.client.JilaliGateway;
 import com.jilali.im.dto.ImRealtimeEvent;
-import com.jilali.user.dto.UserInfo;
-import com.jilali.user.dto.UserInfoResponse;
+import com.jilali.roomcontext.application.port.out.UserUpstreamPort;
+import com.jilali.roomcontext.infrastructure.dto.user.UserInfo;
+import com.jilali.roomcontext.infrastructure.dto.user.UserInfoResponse;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,21 +16,22 @@ import reactor.core.scheduler.Schedulers;
  * {@code new_voice_visitor} push carries only the visitor's user id. Without this enrichment the
  * frontend would render "169335562 visited your profile" instead of a real name.
  *
- * <p>Backed by {@link JilaliGateway#userInfo(long)}, which is {@code @Cacheable("user-info")} —
- * warm hits are sub-millisecond in-process Caffeine lookups (no upstream round-trip), and the
- * bounded-elastic scheduler keeps the one per cold-uid Curve25519 call from blocking the IM
- * socket's I/O thread. Each event type only enriches when its identity fields are empty
- * (already-populated events pass through with {@code Mono.just(event)} and no work).
+ * <p>Backed by {@link UserUpstreamPort#userInfo(long)} (the roomcontext bounded context's
+ * user-profile lookup), whose underlying fetch is {@code @Cacheable("user-info")} — warm hits are
+ * sub-millisecond in-process Caffeine lookups (no upstream round-trip), and the bounded-elastic
+ * scheduler keeps the one per cold-uid Curve25519 call from blocking the IM socket's I/O thread.
+ * Each event type only enriches when its identity fields are empty (already-populated events pass
+ * through with {@code Mono.just(event)} and no work).
  */
 @Singleton
 public class ImEventEnricher {
 
     private static final Logger log = LoggerFactory.getLogger(ImEventEnricher.class);
 
-    private final JilaliGateway gateway;
+    private final UserUpstreamPort userUpstream;
 
-    public ImEventEnricher(JilaliGateway gateway) {
-        this.gateway = gateway;
+    public ImEventEnricher(UserUpstreamPort userUpstream) {
+        this.userUpstream = userUpstream;
     }
 
     /** Returns the same event with nickname/headUrl filled in where the raw upstream payload omitted them.
@@ -104,7 +105,7 @@ public class ImEventEnricher {
      *  {@link #enrich(ImRealtimeEvent)} can fall back to emitting the raw event rather than
      *  silently dropping the notification. */
     private Mono<UserInfo> resolveAsync(long userId) {
-        return Mono.fromCallable(() -> gateway.userInfo(userId))
+        return Mono.fromCallable(() -> userUpstream.userInfo(userId))
             .subscribeOn(Schedulers.boundedElastic());
     }
 

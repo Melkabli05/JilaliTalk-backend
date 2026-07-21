@@ -3,9 +3,9 @@ package com.jilali.auth;
 import com.jilali.auth.dto.AuthUserResponse;
 import com.jilali.auth.dto.upstream.LoginResponse;
 import com.jilali.auth.dto.upstream.SignCheckResponse;
-import com.jilali.client.JilaliGateway;
 import com.jilali.core.JilaliProperties;
-import com.jilali.user.dto.UserInfo;
+import com.jilali.roomcontext.application.port.out.UserUpstreamPort;
+import com.jilali.roomcontext.infrastructure.dto.user.UserInfo;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,11 +15,10 @@ import java.util.Optional;
 /**
  * Orchestrates the auth business flows. Depends on the {@link HelloTalkAuthClient} and
  * {@link AuthSessionRepository} ports (Dependency Inversion) for everything auth-specific — no
- * HTTP, no JDBC, no crypto details leak in here. The one exception is {@link JilaliGateway},
- * injected directly (not behind a narrower port) because the `user` bounded context hasn't been
- * split out of it yet (see {@code docs/superpowers/specs/2026-07-09-ddd-migration-design.md}
- * phase 3, not yet landed) — this is inherited coupling from that in-progress migration, not a
- * new design choice made here.
+ * HTTP, no JDBC, no crypto details leak in here. Profile enrichment (nickname/avatar for the
+ * frontend's AuthUser) goes through {@link UserUpstreamPort}, the roomcontext bounded context's
+ * user-profile lookup port — the consolidated owner of HelloTalk user-info calls after the
+ * legacy god-client was removed.
  */
 @Singleton
 public final class HelloTalkAuthService {
@@ -29,14 +28,14 @@ public final class HelloTalkAuthService {
     private final HelloTalkAuthClient client;
     private final AuthSessionRepository sessions;
     private final JilaliProperties properties;
-    private final JilaliGateway gateway;
+    private final UserUpstreamPort userUpstream;
 
     public HelloTalkAuthService(HelloTalkAuthClient client, AuthSessionRepository sessions,
-                                 JilaliProperties properties, JilaliGateway gateway) {
+                                 JilaliProperties properties, UserUpstreamPort userUpstream) {
         this.client = client;
         this.sessions = sessions;
         this.properties = properties;
-        this.gateway = gateway;
+        this.userUpstream = userUpstream;
     }
 
     /** Verifies real HelloTalk credentials and, on success, opens a local session for them. */
@@ -99,7 +98,7 @@ public final class HelloTalkAuthService {
      */
     private AuthUserResponse buildAuthUser(AuthSession session) {
         try {
-            UserInfo profile = gateway.userInfo(session.helloTalkUid());
+            UserInfo profile = userUpstream.userInfo(session.helloTalkUid());
             String headUrl = profile.details() != null && profile.details().base() != null
                 ? profile.details().base().headUrl() : null;
             return AuthUserResponse.of(session, profile.nickname(), headUrl, properties.deviceModel());
