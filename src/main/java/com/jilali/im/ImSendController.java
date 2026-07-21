@@ -1,7 +1,7 @@
 package com.jilali.im;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jilali.core.JilaliProperties;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.UidExtractor;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.MediaType;
@@ -11,6 +11,7 @@ import io.micronaut.http.annotation.PathVariable;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
+import io.micronaut.serde.annotation.Serdeable;
 import jakarta.validation.constraints.NotBlank;
 
 import java.io.IOException;
@@ -35,22 +36,27 @@ import java.util.Map;
  *   <li>{@code POST /api/im/messages/{userId}/send}    — 1:1 DM (text/image/gift/introduction/voice_room/live_link)
  * </ul>
  * The {@code {userId}} in all three is the *peer* (recipient) uid; the caller (sender) uid is
- * the JWT subject — see {@link JilaliProperties#defaultAuthToken()} + {@link UidExtractor#uidAsLong}.
+ * the JWT subject — see {@link AuthTokenHolder} + {@link UidExtractor#uidAsLong}.
  */
 @ExecuteOn(TaskExecutors.BLOCKING)
 @Controller("/api/im/messages")
 public class ImSendController {
 
-    private final long callerUserId;
+    private final AuthTokenHolder authToken;
     private final ObjectMapper om;
     private final ImEventSource imEventSource;
 
-    public ImSendController(JilaliProperties properties, ObjectMapper om, ImEventSource imEventSource) {
+    public ImSendController(AuthTokenHolder authToken, ObjectMapper om, ImEventSource imEventSource) {
+        this.authToken = authToken;
         this.om = om;
         this.imEventSource = imEventSource;
-        // Single-user BFF today: the caller uid is whoever's JWT is configured for this process.
+    }
+
+    /** Re-derives the caller uid from the live auth token on every call — see {@link AuthTokenHolder}. */
+    private long callerUserId() {
+        // Single-user BFF today: the caller uid is whoever's JWT is currently held.
         // Multiple-caller setups would read the JWT from the request's Authorization header instead.
-        this.callerUserId = UidExtractor.uidAsLong(properties.defaultAuthToken(), om);
+        return UidExtractor.uidAsLong(authToken.get(), om);
     }
 
     /** Send a read-receipt for one upstream {@code msgId} to a peer ({@code userId} is the peer). */
@@ -61,7 +67,7 @@ public class ImSendController {
         }
         int chatType = body.chatType() != null ? body.chatType() : 1;
         imEventSource.sendOutbound(
-            HtImPacketFramer.buildReadReceipt(callerUserId, userId, body.msgId(), chatType)
+            HtImPacketFramer.buildReadReceipt(callerUserId(), userId, body.msgId(), chatType)
         );
         return HttpResponse.noContent();
     }
@@ -73,7 +79,7 @@ public class ImSendController {
     @Post(value = "/{userId}/typing", consumes = MediaType.APPLICATION_JSON)
     public HttpResponse<Void> typing(@PathVariable("userId") long userId, @Body TypingRequest body) {
         imEventSource.sendOutbound(
-            HtImPacketFramer.buildTypingIndicator(callerUserId, userId, body.typing())
+            HtImPacketFramer.buildTypingIndicator(callerUserId(), userId, body.typing())
         );
         return HttpResponse.noContent();
     }
@@ -89,7 +95,7 @@ public class ImSendController {
         try {
             byte[] json = buildSendMessageJson(body, userId).getBytes();
             imEventSource.sendOutbound(
-                HtImPacketFramer.buildPrivateMessagePacket(callerUserId, userId, json, true)
+                HtImPacketFramer.buildPrivateMessagePacket(callerUserId(), userId, json, true)
             );
             return HttpResponse.noContent();
         } catch (IOException e) {
@@ -221,20 +227,26 @@ public class ImSendController {
 
     /**
      * {@code chatType} matches the field on {@code HasReadRequest.smali} (re_output apktool_out,
-     * the real Android client's read-receipt class). 1 = 1:1 DM, but the protocol carries it as
-     * a 4-byte BE int after the length-prefixed msgId — the legacy JS shim
+     * the real Android client's read-receipt class). 1 = 1:1 DM. The protocol carries it as a
+     * single byte after the length-prefixed msgId (see {@link HtImPacketFramer#buildReadReceipt}
+     * for the full field-by-field smali citation) — the legacy JS shim
      * ({@code prvgmsgpacket.js:sendReadReceipt}) omits it entirely, which is why we now default
      * it to 1 server-side rather than crash on missing input.
      */
+    @Serdeable
     public record ReadReceiptRequest(@NotBlank String msgId, Integer chatType) {}
+    @Serdeable
     public record TypingRequest(boolean typing) {}
+    @Serdeable
     public record IntroductionRequest(
         long userId, String nickname, String headUrl, String sex, Integer age, String nationality, String bio
     ) {}
+    @Serdeable
     public record GiftRequest(
         long id, String name, Map<String, String> multiName, String smallPic, String bigPic,
         String animUrl, long diamondVal, int giftType
     ) {}
+    @Serdeable
     public record SendMessageRequest(
         String kind,                   // text | image | voice_room | live_link | introduction | send_gift
         String msgId,

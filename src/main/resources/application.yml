@@ -96,6 +96,11 @@ datasources:
 jilali:
   # HelloTalk API auth token. Set LIVEHUB_AUTH_TOKEN env var.
   default-auth-token: ${LIVEHUB_AUTH_TOKEN:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODU0Njc4MDksImlhdCI6MTc4Mjg3NTgwOSwic3JjIjoyLCJ1aWQiOjE2OTMzNTU2Mn0.c4Gsbkb8_2jX6ETUqrgNWsZANIcoUZxOvH6lqBhm2oU}
+  # Optional HelloTalk account credentials — enables AuthTokenHolder to auto-relogin and
+  # mint a fresh JWT when the upstream invalidates our session (status 105, "logged in on
+  # another device"). Leave unset to disable auto-relogin (falls back to a clean disconnect).
+  hellotalk-email: ${HELLOTALK_EMAIL:}
+  hellotalk-password: ${HELLOTALK_PASSWORD:}
   # Allowed Origin headers for WebSocket connections to /ws/ht/{cname}.
   allowed-web-socket-origins:
     - "http://localhost:4200"

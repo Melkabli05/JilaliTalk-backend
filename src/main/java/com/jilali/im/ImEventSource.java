@@ -1,6 +1,8 @@
 package com.jilali.im;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jilali.auth.HelloTalkAuthClient;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.JilaliProperties;
 import com.jilali.core.UidExtractor;
 import com.jilali.im.dto.ImRealtimeEvent;
@@ -29,11 +31,14 @@ public class ImEventSource {
     private static final Logger log = LoggerFactory.getLogger(ImEventSource.class);
 
     private final long userId;
-    private final String jwt;
+    private final AuthTokenHolder authToken;
     private final String deviceId;
     private final String deviceModel;
     private final ObjectMapper om;
     private final ImEventEnricher enricher;
+    private final HelloTalkAuthClient authClient;
+    private final String hellotalkEmail;
+    private final String hellotalkPassword;
 
     private final AtomicInteger subscriberCount = new AtomicInteger(0);
     private volatile HtImUpstreamConnector connector;
@@ -44,13 +49,19 @@ public class ImEventSource {
     private volatile ImRealtimeEvent.ConnectionState lastConnectionState =
         new ImRealtimeEvent.ConnectionState("disconnected");
 
-    public ImEventSource(JilaliProperties properties, ObjectMapper om, ImEventEnricher enricher) {
-        this.jwt         = properties.defaultAuthToken();
-        this.deviceId    = properties.deviceId();
-        this.deviceModel = properties.deviceModel();
-        this.om          = om;
-        this.enricher    = enricher;
-        this.userId      = UidExtractor.uidAsLong(jwt, om);
+    public ImEventSource(
+        JilaliProperties properties, AuthTokenHolder authToken, ObjectMapper om,
+        ImEventEnricher enricher, HelloTalkAuthClient authClient
+    ) {
+        this.authToken    = authToken;
+        this.deviceId     = properties.deviceId();
+        this.deviceModel  = properties.deviceModel();
+        this.om           = om;
+        this.enricher     = enricher;
+        this.authClient   = authClient;
+        this.hellotalkEmail    = properties.hellotalkEmail();
+        this.hellotalkPassword = properties.hellotalkPassword();
+        this.userId       = UidExtractor.uidAsLong(authToken.get(), om);
         log.info("ImEventSource: userId={}", userId);
     }
 
@@ -60,7 +71,12 @@ public class ImEventSource {
             Sinks.Many<ImRealtimeEvent> newSink = Sinks.many().multicast().directBestEffort();
             this.sink = newSink;
 
-            HtImUpstreamConnector upstream = new HtImUpstreamConnector(userId, jwt, deviceId, deviceModel, om);
+            // Read the live token here (not a constructor-captured field) so a fresh reconnect
+            // after a relogin (see HtImUpstreamConnector.attemptRelogin) picks up the new JWT.
+            HtImUpstreamConnector upstream = new HtImUpstreamConnector(
+                userId, authToken.get(), deviceId, deviceModel, om,
+                authClient, authToken, hellotalkEmail, hellotalkPassword
+            );
             this.connector = upstream;
 
             upstream.attach(

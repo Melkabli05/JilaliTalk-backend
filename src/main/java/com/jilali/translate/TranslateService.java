@@ -1,6 +1,7 @@
 package com.jilali.translate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.JilaliException;
 import com.jilali.core.JilaliProperties;
 import com.jilali.core.JwtUtil;
@@ -44,15 +45,18 @@ public class TranslateService {
     private final TranslateClient client;
     private final EncryptedFieldCodec codec;
     private final JilaliProperties properties;
+    private final AuthTokenHolder authToken;
     private final ObjectMapper mapper;
 
     public TranslateService(TranslateClient client,
                             EncryptedFieldCodec codec,
                             JilaliProperties properties,
+                            AuthTokenHolder authToken,
                             ObjectMapper mapper) {
         this.client = client;
         this.codec = codec;
         this.properties = properties;
+        this.authToken = authToken;
         this.mapper = mapper;
     }
 
@@ -73,9 +77,9 @@ public class TranslateService {
     @Cacheable("ai-translate")
     public String translate(String text, String targetLang) {
         var session = Curve25519SessionGenerator.generate(properties.translateServerPubKeyHex());
-        long uid = jwtUid(properties);
+        long uid = jwtUid(authToken);
 
-        TranslateUpstreamHeaders headers = TranslateUpstreamHeaders.forSession(session, uid, properties);
+        TranslateUpstreamHeaders headers = TranslateUpstreamHeaders.forSession(session, uid, authToken);
         AiTranslateUpstreamRequest body = new AiTranslateUpstreamRequest(
                 targetLang,
                 null,
@@ -91,8 +95,8 @@ public class TranslateService {
     }
 
     /** Resolves the caller's uid from the JWT that will be sent upstream. */
-    private static long jwtUid(JilaliProperties properties) {
-        Long uid = JwtUtil.uidFromBearer("Bearer " + properties.defaultAuthToken());
+    private static long jwtUid(AuthTokenHolder authToken) {
+        Long uid = JwtUtil.uidFromBearer("Bearer " + authToken.get());
         return uid != null ? uid : 0L;
     }
 

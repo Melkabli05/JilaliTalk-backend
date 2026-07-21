@@ -2,6 +2,7 @@ package com.jilali.user;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jilali.client.ProfileClient;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.JilaliProperties;
 import com.jilali.core.UidExtractor;
 import com.jilali.crypto.ApkSignatureGenerator;
@@ -49,13 +50,20 @@ public class ProfileController {
     private final ProfileClient profileClient;
     private final ProfileBundleService bundleService;
     private final JilaliProperties properties;
-    private final long callerUserId;
+    private final AuthTokenHolder authToken;
+    private final ObjectMapper om;
 
-    public ProfileController(ProfileClient profileClient, ProfileBundleService bundleService, JilaliProperties properties, ObjectMapper om) {
+    public ProfileController(ProfileClient profileClient, ProfileBundleService bundleService, JilaliProperties properties, AuthTokenHolder authToken, ObjectMapper om) {
         this.profileClient = profileClient;
         this.bundleService = bundleService;
         this.properties = properties;
-        this.callerUserId = UidExtractor.uidAsLong(properties.defaultAuthToken(), om);
+        this.authToken = authToken;
+        this.om = om;
+    }
+
+    /** Re-derives the caller uid from the live auth token on every call — see {@link AuthTokenHolder}. */
+    private long callerUserId() {
+        return UidExtractor.uidAsLong(authToken.get(), om);
     }
 
     @Get("/me")
@@ -165,7 +173,7 @@ public class ProfileController {
             clientTs,
             body.index(),
             properties.deviceId(),
-            Md5Util.visitorHistorySign(callerUserId, clientTs),
+            Md5Util.visitorHistorySign(callerUserId(), clientTs),
             ApkSignatureGenerator.VERSION_NAME,
             clientTs,
             0

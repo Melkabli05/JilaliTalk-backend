@@ -34,15 +34,13 @@ public class DefaultHeadersClientFilter implements Ordered {
     );
 
     private final JilaliProperties properties;
+    private final AuthTokenHolder authToken;
     private final ObjectMapper om;
-    private final long callerUserId;
-    private final String callerUserIdString;
 
-    public DefaultHeadersClientFilter(JilaliProperties properties, ObjectMapper om) {
+    public DefaultHeadersClientFilter(JilaliProperties properties, AuthTokenHolder authToken, ObjectMapper om) {
         this.properties = properties;
+        this.authToken = authToken;
         this.om = om;
-        this.callerUserId = UidExtractor.uidAsLong(properties.defaultAuthToken(), om);
-        this.callerUserIdString = String.valueOf(callerUserId);
     }
 
     @RequestFilter
@@ -96,8 +94,7 @@ public class DefaultHeadersClientFilter implements Ordered {
 
     private String defaultFor(String header) {
         return switch (header) {
-            case "authorization", "x-ht-token" -> "Bearer " +
-                properties.defaultAuthToken();
+            case "authorization", "x-ht-token" -> "Bearer " + authToken.get();
             // Replaced by the unconditional buildUserAgent() in addDefaults above. Kept
             // here only because forwardedHeaders("user-agent") still references it; any caller
             // using the forwarded-headers config will still get the smali-correct value.
@@ -133,7 +130,7 @@ public class DefaultHeadersClientFilter implements Ordered {
             .orElse(null);
         String token = (inboundAuth != null && !inboundAuth.isBlank())
             ? inboundAuth
-            : "Bearer " + properties.defaultAuthToken();
+            : "Bearer " + authToken.get();
         Long uid = JwtUtil.uidFromBearer(token);
         log.debug("[jlhub] deriveCallerUid: token-source={}, uid={}",
             (inboundAuth != null && !inboundAuth.isBlank()) ? "inbound" : "default",
@@ -167,7 +164,7 @@ public class DefaultHeadersClientFilter implements Ordered {
                        //       run on a real Android device; for the BFF dev box this is a
                        //       safe default since the only thing that varies is the device
                        //       model string above.
-            callerUserIdString
+            UidExtractor.uidAsLong(authToken.get(), om)
         );
     }
 

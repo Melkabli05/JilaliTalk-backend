@@ -109,23 +109,29 @@ final class HtImPacketFramer {
      *   [2-byte LE length prefix = (msgId.utf8_len + 1) cast to short]
      *   [msgId UTF-8 bytes]
      *   [1-byte 0x00 terminator]
-     *   [4-byte LE chatType int]
+     *   [1-byte chatType]
      * </pre>
      * The length prefix is written by {@code ServerSocketRequest.writeString()} (re_output
      * smali_classes12) which {@code mx.a.i0(S)} proves is little-endian — same convention as
-     * the 20-byte packet header. {@code chatType} is 1 for 1:1 DM (the {@code ImSendController}
-     * default); upstream client uses 2 for group/voice-room contexts we don't yet send.
+     * the 20-byte packet header. {@code chatType} is a SINGLE byte, not a 4-byte int — a
+     * previous reading of this smali mis-assumed {@code ByteArrayOutputStream.write(int)}
+     * (HasReadRequest.smali's {@code write(I)} call on the {@code chatType} field) writes the
+     * full 4-byte int; per the Java {@code OutputStream.write(int)} contract it writes only
+     * the LOW byte. Verified by re-reading HasReadRequest.smali lines 145-147 directly: single
+     * {@code write(I)} call, no multi-byte encoding helper invoked. {@code chatType} is 1 for
+     * 1:1 DM (the {@code ImSendController} default); upstream client uses 2 for group/voice-room
+     * contexts we don't yet send.
      */
     static byte[] buildReadReceipt(long fromId, long toId, String msgId, int chatType) {
         byte[] msgIdBytes = msgId.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         // +1 in the length prefix reserves the slot for the trailing 0x00 terminator that
         // writeString() also appends, per ServerSocketRequest.smali lines 239-261.
         short len = (short) (msgIdBytes.length + 1);
-        java.nio.ByteBuffer body = java.nio.ByteBuffer.allocate(2 + msgIdBytes.length + 1 + 4).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        java.nio.ByteBuffer body = java.nio.ByteBuffer.allocate(2 + msgIdBytes.length + 1 + 1).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         body.putShort(len);
         body.put(msgIdBytes);
         body.put((byte) 0x00); // terminator
-        body.putInt(chatType);
+        body.put((byte) chatType);
         return buildPacket(fromId, toId, CMD_READ_RECEIPT, 0xF0, body.array());
     }
 

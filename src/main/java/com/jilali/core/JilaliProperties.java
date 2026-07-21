@@ -17,11 +17,19 @@ public record JilaliProperties(
         @Nullable String translateServerPubKeyHex,
         @Nullable String deviceId,
         @Nullable String deviceModel,
-        @Nullable List<String> allowedWebSocketOrigins) {
+        @Nullable List<String> allowedWebSocketOrigins,
+        // Optional HelloTalk account credentials — only needed to auto-relogin when the
+        // upstream invalidates our session (status 105, "logged in on another device").
+        // Blank by default; if unset, AuthTokenHolder simply cannot refresh and status-105
+        // handling falls back to a clean disconnect (see HtImUpstreamConnector).
+        @Nullable String hellotalkEmail,
+        @Nullable String hellotalkPassword) {
 
     public JilaliProperties {
         forwardedHeaders = forwardedHeaders == null ? List.of() : List.copyOf(forwardedHeaders);
         defaultAuthToken = defaultAuthToken != null ? defaultAuthToken : "";
+        hellotalkEmail    = hellotalkEmail    != null ? hellotalkEmail    : "";
+        hellotalkPassword = hellotalkPassword != null ? hellotalkPassword : "";
         agoraCipherKey   = agoraCipherKey   != null ? agoraCipherKey   : "";
         serverPubKeyHex  = serverPubKeyHex  != null ? serverPubKeyHex  : "";
         translateServerPubKeyHex = translateServerPubKeyHex != null ? translateServerPubKeyHex : "";

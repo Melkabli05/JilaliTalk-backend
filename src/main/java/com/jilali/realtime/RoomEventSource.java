@@ -1,7 +1,7 @@
 package com.jilali.realtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jilali.core.JilaliProperties;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.UidExtractor;
 import com.jilali.realtime.dto.RoomCcRealtimeEvent;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
@@ -24,7 +24,7 @@ public class RoomEventSource {
     private final HtNotifyMapper mapper;
     private final HtCcNotifyMapper ccMapper;
     private final ObjectMapper om;
-    private final String connectorUserId;
+    private final AuthTokenHolder authToken;
     private final Map<String, HtLiveHubUpstreamConnector> connectors = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
     private final Map<String, Sinks.Many<RoomRealtimeEvent>> sinks = new ConcurrentHashMap<>();
@@ -41,12 +41,11 @@ public class RoomEventSource {
      *  immediately instead of waiting for a transition that already happened. */
     private final Map<String, RoomRealtimeEvent.ConnectionState> lastConnectionState = new ConcurrentHashMap<>();
 
-    public RoomEventSource(HtNotifyMapper mapper, HtCcNotifyMapper ccMapper, JilaliProperties properties, ObjectMapper om) {
+    public RoomEventSource(HtNotifyMapper mapper, HtCcNotifyMapper ccMapper, AuthTokenHolder authToken, ObjectMapper om) {
         this.mapper = mapper;
         this.ccMapper = ccMapper;
         this.om = om;
-        this.connectorUserId = UidExtractor.uidAsString(properties.defaultAuthToken(), om);
-        log.info("RoomEventSource: connector userId={}", connectorUserId);
+        this.authToken = authToken;
     }
 
     public Flux<RoomRealtimeEvent> subscribe(String cname) {
@@ -77,6 +76,8 @@ public class RoomEventSource {
 
             emitAndTrackState(cname, new RoomRealtimeEvent.ConnectionState("connecting"));
 
+            String connectorUserId = UidExtractor.uidAsString(authToken.get(), om);
+            log.info("RoomEventSource: connector userId={} cname='{}'", connectorUserId, cname);
             upstream.connect(connectorUserId, cname, true)
                 .exceptionally(ex -> {
                     log.error("RoomEventSource: upstream connection failed for cname='{}': {}", cname, ex.getMessage());

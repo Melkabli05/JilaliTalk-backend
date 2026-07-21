@@ -3,6 +3,7 @@ package com.jilali.client;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.JilaliException;
 import com.jilali.core.JilaliProperties;
 import com.jilali.core.JwtUtil;
@@ -72,13 +73,16 @@ public class JilaliGateway {
     private final VipExperienceCardClient vipClient;
     private final HttpClient httpClient;
     private final JilaliProperties properties;
+    private final AuthTokenHolder authToken;
 
     public JilaliGateway(JilaliClient client, VipExperienceCardClient vipClient,
-                          @Client("jlhub") HttpClient jlhubClient, JilaliProperties properties) {
+                          @Client("jlhub") HttpClient jlhubClient, JilaliProperties properties,
+                          AuthTokenHolder authToken) {
         this.client = client;
         this.vipClient = vipClient;
         this.httpClient = jlhubClient;
         this.properties = properties;
+        this.authToken = authToken;
     }
 
     /** Exposes the raw client for callers that need direct envelope access. */
@@ -180,7 +184,7 @@ public class JilaliGateway {
     public Long currentUserId() {
         var inbound = ServerRequestContext.currentRequest().orElse(null);
         String header = inbound == null ? null : inbound.getHeaders().get("authorization");
-        String token = header != null && !header.isBlank() ? header : "Bearer " + properties.defaultAuthToken();
+        String token = header != null && !header.isBlank() ? header : "Bearer " + authToken.get();
         return JwtUtil.uidFromBearer(token);
     }
 
@@ -203,7 +207,7 @@ public class JilaliGateway {
         var request = UserInfoRequest.forUser(userId);
         byte[] encryptedPayload = EncbinUtil.encrypt(request, session.sharedSecret());
 
-        String token = properties.defaultAuthToken();
+        String token = authToken.get();
         String deviceId = properties.deviceId();
         // x-ht-uid must identify who is making this call (the shared service account the JWT
         // authenticates as), never the profile being looked up, and — critically — it must match

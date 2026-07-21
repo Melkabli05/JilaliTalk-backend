@@ -1,6 +1,6 @@
 package com.jilali.translate.dto;
 
-import com.jilali.core.JilaliProperties;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.crypto.Curve25519SessionGenerator.Curve25519Session;
 
 /**
@@ -44,7 +44,7 @@ public record TranslateUpstreamHeaders(
      * treats it the same as an empty string).
      */
     public static TranslateUpstreamHeaders forSession(
-            Curve25519Session session, long uid, JilaliProperties properties
+            Curve25519Session session, long uid, AuthTokenHolder authToken
     ) {
         return new TranslateUpstreamHeaders(
                 session.headerValue(),
@@ -53,7 +53,7 @@ public record TranslateUpstreamHeaders(
                 BUILD,
                 VERSION,
                 USER_AGENT,
-                "Bearer " + properties.defaultAuthToken(),
+                "Bearer " + authToken.get(),
                 ACCEPT_STREAM
         );
     }
