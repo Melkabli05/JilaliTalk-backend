@@ -73,7 +73,7 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("im-hb");
-    private final ReconnectStrategy backoff = new ReconnectStrategy(Duration.ofSeconds(1), Duration.ofSeconds(30));
+    private final ReconnectStrategy backoff = ReconnectStrategy.defaults();
     private final WebSocketConnectionLifecycle lifecycle = new WebSocketConnectionLifecycle("im", backoff);
 
     private volatile Consumer<ImRealtimeEvent> eventListener;

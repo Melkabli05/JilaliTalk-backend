@@ -26,6 +26,15 @@ public final class ReconnectStrategy {
         this.cap = cap;
     }
 
+    /**
+     * Standard 1s→30s capped exponential with full jitter — the exact shape both
+     * upstream WebSocket connectors have used since the inlining of the helper. Single
+     * source of truth for the default policy.
+     */
+    public static ReconnectStrategy defaults() {
+        return new ReconnectStrategy(Duration.ofSeconds(1), Duration.ofSeconds(30));
+    }
+
     /** Upper bound of the jitter window for a given attempt count, before randomization. */
     static Duration boundFor(int attempt, Duration base, Duration cap) {
         long baseMillis = base.toMillis();
