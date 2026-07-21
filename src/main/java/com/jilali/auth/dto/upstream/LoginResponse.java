@@ -5,23 +5,25 @@ import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 
 /**
- * Response of {@code POST /user_register_center/v3/login}. Only {@code userInfo} is modeled —
- * {@code pre_register_info}/{@code countdown_info}/{@code switch_config}/{@code banned_info}
- * are ignored (global {@code FAIL_ON_UNKNOWN_PROPERTIES=false}) since nothing in this feature
- * needs them yet; see {@code re_output/FINDINGS.md} §7.1 if a future caller does.
+ * Response of {@code POST /user_register_center/v3/login}. Only the fields this BFF actually
+ * consumes ({@code userId}, {@code jwt}) are modeled — the upstream payload carries
+ * {@code area_code}, {@code reg_ts}, {@code is_adult}, {@code is_new_reg_user}, {@code is_vip}
+ * inside {@code user_info}, but they're never read (per the audit's dead-code report).
+ * Micronaut's global {@code FAIL_ON_UNKNOWN_PROPERTIES=false} lets the extra fields round-trip
+ * through Jackson without breaking deserialization, so this is a strict removal of the
+ * 5 unread record components.
  */
 @Serdeable
 public record LoginResponse(@JsonProperty("user_info") @Nullable UserInfo userInfo) {
 
-    /** {@code jwt} is the access token every subsequent upstream call authenticates with. */
+    /**
+     * Subset of HelloTalk's {@code user_info} we actually use: the numeric uid (the row key
+     * for our local session table) and the live upstream JWT (carried in the cookie and
+     * published via {@code AuthTokenHolder}). See {@code docs/audit/reports/dead-code.md}.
+     */
     @Serdeable
     public record UserInfo(
         @JsonProperty("user_id") long userId,
-        @Nullable String jwt,
-        @JsonProperty("area_code") @Nullable String areaCode,
-        @JsonProperty("reg_ts") long regTs,
-        @JsonProperty("is_adult") int isAdult,
-        @JsonProperty("is_new_reg_user") boolean isNewRegUser,
-        @JsonProperty("is_vip") boolean isVip
+        @Nullable String jwt
     ) {}
 }

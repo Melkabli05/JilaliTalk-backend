@@ -7,7 +7,7 @@
 | File / Field | Evidence | Action | Status |
 |---|---|---|---|
 | `user/dto/VisitRequest.java` | Grep-verified: no callers of `VisitRequest` in `src/main/java` (per the partial user-dto audit agent's note). | **Deleted** (Refactor 1). | ✅ removed 2026-07-21 |
-| `auth/LoginResponse.UserInfo` fields `areaCode`, `regTs`, `isAdult`, `isNewRegUser`, `isVip` | Populated by Jackson from upstream, never read anywhere in `src/main/java` (only `userId()` and `jwt()` are consumed) — per the auth-package audit agent. | **Delete** the unused fields, or at minimum stop populating them by introducing a smaller `LoginResponse.UserInfoMin` projection record. | pending |
+| `auth/LoginResponse.UserInfo` fields `areaCode`, `regTs`, `isAdult`, `isNewRegUser`, `isVip` | Populated by Jackson from upstream, never read anywhere in `src/main/java` (only `userId()` and `jwt()` are consumed) — per the auth-package audit agent. | **Deleted** (Refactor 2). | ✅ removed 2026-07-21 |
 
 ## Suspect but not confirmed dead (verify before deleting)
 
