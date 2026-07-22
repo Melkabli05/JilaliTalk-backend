@@ -106,6 +106,18 @@ public class ProfileBundleService {
         return fresh;
     }
 
+    /**
+     * Test-only seam: drives the {@link #fetchLimitationsOrNull} cache-population path
+     * without paying for the full {@link #bundle} StructuredTaskScope fan-out. Package
+     * private on purpose — not part of the service contract, only callable from the
+     * {@code com.jilali.roomcontext.application.service} test sources. Returns the
+     * fetched payload (or null when the stub returned null) so the caller can also
+     * assert on the raw fetch result.
+     */
+    final ProfileLimitationsResponse.LimitationsData fetchLimitationsForTest() {
+        return fetchLimitationsOrNull();
+    }
+
     /** Read-most-recent cached limitations or {@code null} if stale/missing. Used by
      *  {@link ProfileUpstreamAdapter#edit} to gate mutating profile actions without an
      *  extra upstream round-trip. Returns null when the cache is empty OR has expired —
