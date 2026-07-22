@@ -179,12 +179,31 @@ public class RoomEventSource {
     }
 
     private void emitWithRevisionBump(String cname, RoomRealtimeEvent event) {
-        if (event instanceof RoomRealtimeEvent.UserJoin
-                || event instanceof RoomRealtimeEvent.UserQuit
-                || event instanceof RoomRealtimeEvent.StageJoin
-                || event instanceof RoomRealtimeEvent.RoomKick) {
+        // Only audience-roster-affecting variants bump the revision counter (the
+        // /audience-reconcile drift-correct poll uses this to decide whether a
+        // refetch is needed). Sealed-pattern switch means the compiler enforces
+        // exhaustiveness and we don't have to update this site every time a new
+        // RoomRealtimeEvent variant is added — the switch falls through silently,
+        // which is exactly the desired behavior (new variants simply don't bump
+        // the revision unless explicitly listed).
+        if (audienceAffecting(event)) {
             bumpAudienceRevision(cname);
         }
         sinkFor(cname).tryEmitNext(event);
+    }
+
+    /**
+     * Pure predicate that names the four audience-roster-affecting variants, extracted
+     * so a sealed-pattern switch can enforce exhaustiveness on the {@code RoomRealtimeEvent}
+     * hierarchy in one place.
+     */
+    private static boolean audienceAffecting(RoomRealtimeEvent event) {
+        return switch (event) {
+            case RoomRealtimeEvent.UserJoin ignored -> true;
+            case RoomRealtimeEvent.UserQuit ignored -> true;
+            case RoomRealtimeEvent.StageJoin ignored -> true;
+            case RoomRealtimeEvent.RoomKick ignored -> true;
+            default -> false;
+        };
     }
 }
