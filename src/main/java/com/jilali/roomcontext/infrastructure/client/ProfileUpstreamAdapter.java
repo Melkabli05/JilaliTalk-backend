@@ -149,6 +149,17 @@ public class ProfileUpstreamAdapter implements ProfileUpstreamPort {
 
     @Override
     public ProfileEditResponse edit(ProfileEditRequest body) {
+        // Server-side gate on the cached limitations: refuse the edit and surface a 423
+        // Locked-equivalent before the upstream call goes out, so a tampered client can't
+        // bypass the UI banner to mutate a restricted account. Limitations are refreshed
+        // opportunistically by ProfileBundleService — a stale-true value at most for the
+        // bundle's TTL, which is acceptable for the security posture (we re-check on the
+        // next bundle round-trip; if the upstream flipped the flag back to false meanwhile,
+        // we'd briefly over-block, which the safer failure mode).
+        var limits = bundleService.cachedLimitations();
+        if (limits != null && limits.isModifyRestricted()) {
+            throw new ProfileEditRestrictedException(limits);
+        }
         return profileClient.editProfile(body);
     }
 

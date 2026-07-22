@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 /** Extracted natively for this bounded context - same StructuredTaskScope fan-out shape as the
@@ -26,9 +27,25 @@ public class ProfileBundleService {
 
     private static final Logger log = LoggerFactory.getLogger(ProfileBundleService.class);
 
+    /** Short TTL cache for the per-caller limitations payload, so the server-side edit gate
+     *  in ProfileUpstreamAdapter.edit() doesn't have to issue an upstream round-trip per
+     *  mutation. Refreshed on every bundle() call; 5 minutes is a sane upper bound — well
+     *  under the upstream's typical ban-review horizon, so an unbanned user who just had
+     *  their restriction lifted is unblocked promptly. */
+    private static final long LIMITATIONS_CACHE_TTL_MS = 5L * 60L * 1000L;
+
     private final ProfileJilaliClient profileClient;
     private final UserProfileEncryptedClient encryptedClient;
     private final AuthTokenHolder authToken;
+
+    /** Per-JVM limitations cache, scoped by the caller uid. Single-slot-per-uid with a TTL — the
+     *  same caller is overwhelmingly likely to be the one asking again within seconds
+     *  (page → edit flow), and the upstream payload is read-only. Not a distributed cache,
+     *  so a horizontally-scaled deployment would have a per-instance copy — fine: the worst
+     *  case is a brief over-/under-block until the next bundle round-trip per pod. */
+    private record CachedLimitations(long fetchedAtMs,
+                                    ProfileLimitationsResponse.LimitationsData data) {}
+    private final AtomicReference<CachedLimitations> limitationsCache = new AtomicReference<>();
 
     public ProfileBundleService(ProfileJilaliClient profileClient, UserProfileEncryptedClient encryptedClient,
                                  AuthTokenHolder authToken) {
@@ -81,8 +98,25 @@ public class ProfileBundleService {
     }
 
     private ProfileLimitationsResponse.LimitationsData fetchLimitationsOrNull() {
-        return fetchOrNull("profile limitations",
+        var fresh = fetchOrNull("profile limitations",
                 profileClient::limitations, ProfileLimitationsResponse::data);
+        if (fresh != null) {
+            limitationsCache.set(new CachedLimitations(System.currentTimeMillis(), fresh));
+        }
+        return fresh;
+    }
+
+    /** Read-most-recent cached limitations or {@code null} if stale/missing. Used by
+     *  {@link ProfileUpstreamAdapter#edit} to gate mutating profile actions without an
+     *  extra upstream round-trip. Returns null when the cache is empty OR has expired —
+     *  a null result means "we don't know", which the gate treats as "allow" (fail-open
+     *  by design; the upstream call is still made, so the server-side enforcement at
+     *  the upstream still applies, this is only the pre-flight gate). */
+    public ProfileLimitationsResponse.LimitationsData cachedLimitations() {
+        var cached = limitationsCache.get();
+        if (cached == null) return null;
+        long age = System.currentTimeMillis() - cached.fetchedAtMs;
+        return age <= LIMITATIONS_CACHE_TTL_MS ? cached.data() : null;
     }
 
     private PayChatInfoResponse.PayChatInfoData fetchPayChatInfoOrNull(long targetUserId) {
