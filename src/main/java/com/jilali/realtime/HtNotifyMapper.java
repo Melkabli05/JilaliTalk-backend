@@ -353,7 +353,8 @@ public class HtNotifyMapper {
             textOr(info, "notice", null),
             textOr(info, "tip_text", null),
             textOr(info, "share_status", null),
-            textOr(info, "location", null));
+            textOr(info, "location", null),
+            false);
     }
 
     private RoomRealtimeEvent.GiftEvent mapGift(JsonNode userNode, JsonNode info) {

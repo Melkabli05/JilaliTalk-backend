@@ -165,6 +165,24 @@ public class RoomEventSource {
     }
 
     /**
+     * Injects an event into a room's live stream without any upstream involvement — used by
+     * {@code GhostPublishController} to synthesize a stage_join/stage_quit for a ghost publisher.
+     * Upstream (HelloTalk's livehub) has no concept of an audience member publishing without
+     * joining the stage roster, so this is the BFF's own mediation: every currently-connected
+     * browser tab subscribed to {@code cname} receives the event exactly as if it came from
+     * upstream. A room with no active subscribers (nobody has opened {@code /ws/ht/{cname}}
+     * yet) silently drops the event — there's nobody to notify and no upstream connection to
+     * piggyback on, so it's a no-op rather than an error.
+     */
+    public void emitSynthetic(String cname, RoomRealtimeEvent event) {
+        if (counts.get(cname) == null || counts.get(cname).get() <= 0) {
+            log.debug("RoomEventSource: emitSynthetic no-op, no subscribers for cname='{}'", cname);
+            return;
+        }
+        emitWithRevisionBump(cname, event);
+    }
+
+    /**
      * Returns the current audience roster revision for a room. The revision increments on every
      * event that changes the audience roster (user_join, user_quit, stage_join, room_kick).
      * Returns 0 if the room has no active subscribers.

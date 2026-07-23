@@ -164,7 +164,14 @@ public sealed interface RoomRealtimeEvent permits
         String notice,
         String tipText,
         String shareStatus,
-        String location
+        String location,
+        // True only for a synthetic stage_join the BFF itself constructs — see
+        // GhostPublishController. Every real upstream stage_join maps this to false;
+        // upstream has no concept of a ghost publisher, so this is purely a BFF-mediated
+        // signal telling the frontend "this uid is publishing audio but was never added
+        // to the audience/stage roster upstream — subscribe for audio, render with the
+        // ghost badge, and don't treat this as a real stage seat."
+        boolean isGhost
     ) {}
 
     record StageJoin(StageUserEvent stageUser) implements RoomRealtimeEvent {}
