@@ -88,10 +88,23 @@ endpoints:
 
 datasources:
   default:
-    url: jdbc:h2:file:${JILALI_DB_PATH:./data/jilalitalk};AUTO_SERVER=TRUE
-    driverClassName: org.h2.Driver
-    username: sa
-    password: ""
+    # SQLite via Micronaut's official sqlite module — Xerial driver bundled transitively.
+    # PRAGMAs applied by SqliteConnectionInit on every new connection:
+    #   journal_mode=WAL   (better concurrency: readers don't block writers)
+    #   synchronous=NORMAL (durable against app crash; safe with WAL; ~2-10x faster than FULL)
+    #   foreign_keys=ON    (off by default in SQLite!)
+    #   busy_timeout=5000  (retry lock waits up to 5s)
+    #   cache_size=-20000   (20MB page cache)
+    #   temp_store=MEMORY   (temp tables in RAM)
+    # These MUST be per-connection; SQLite doesn't persist them with the DB.
+    url: jdbc:sqlite:${JILALI_DB_PATH:./data/jilalitalk.db}?journal_mode=WAL&synchronous=NORMAL&foreign_keys=on&busy_timeout=5000
+    db-type: sqlite
+    pool:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      # Pool is bounded — write paths are short-lived and the cleanup jobs are single-shot.
+      # Reads dominate the workload (auth_session lookups, profile cache hits).
+      connection-timeout: 5s
 
 jilali:
   # HelloTalk API auth token. Set LIVEHUB_AUTH_TOKEN env var.

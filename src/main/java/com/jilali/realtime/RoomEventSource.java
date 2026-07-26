@@ -5,6 +5,8 @@ import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.UidExtractor;
 import com.jilali.realtime.dto.RoomCcRealtimeEvent;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
+import com.jilali.roomcontext.domain.service.GhostPublisherEntity;
+import com.jilali.roomcontext.domain.service.JdbcGhostPublisherRepository;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +27,7 @@ public class RoomEventSource {
     private final HtCcNotifyMapper ccMapper;
     private final ObjectMapper om;
     private final AuthTokenHolder authToken;
+    private final JdbcGhostPublisherRepository ghostPublishers;
     private final Map<String, HtLiveHubUpstreamConnector> connectors = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
     private final Map<String, Sinks.Many<RoomRealtimeEvent>> sinks = new ConcurrentHashMap<>();
@@ -41,14 +44,32 @@ public class RoomEventSource {
      *  immediately instead of waiting for a transition that already happened. */
     private final Map<String, RoomRealtimeEvent.ConnectionState> lastConnectionState = new ConcurrentHashMap<>();
 
-    public RoomEventSource(HtNotifyMapper mapper, HtCcNotifyMapper ccMapper, AuthTokenHolder authToken, ObjectMapper om) {
+    public RoomEventSource(
+        HtNotifyMapper mapper,
+        HtCcNotifyMapper ccMapper,
+        AuthTokenHolder authToken,
+        ObjectMapper om,
+        JdbcGhostPublisherRepository ghostPublishers
+    ) {
         this.mapper = mapper;
         this.ccMapper = ccMapper;
         this.om = om;
         this.authToken = authToken;
+        this.ghostPublishers = ghostPublishers;
     }
 
     public Flux<RoomRealtimeEvent> subscribe(String cname) {
+        // Re-emit any currently-active ghost publishers to the new subscriber. Without this,
+        // a client that joins the room AFTER a ghost publisher started speaking would never
+        // see them — there's no upstream event to re-fire, since the BFF itself generated
+        // the original stage_join. Each re-emit is a synthetic stage_join with isGhost:true,
+        // which the frontend's existing ghost-audience rendering already handles.
+        var livePublishers = ghostPublishers.listByRoom(cname);
+        var liveEmits = livePublishers.stream()
+            .map(p -> (RoomRealtimeEvent) new RoomRealtimeEvent.StageJoin(
+                syntheticGhostStageUser(p.userId())))
+            .toList();
+
         boolean first = counts.computeIfAbsent(cname, k -> new AtomicInteger(0))
             .incrementAndGet() == 1;
 
@@ -87,12 +108,16 @@ public class RoomEventSource {
                 });
 
             log.info("RoomEventSource: opened upstream for cname='{}'", cname);
-            return sink.asFlux();
+            return liveEmits.isEmpty()
+                ? sink.asFlux()
+                : Flux.concat(Flux.fromIterable(liveEmits), sink.asFlux());
         }
 
         RoomRealtimeEvent.ConnectionState state = lastConnectionState.getOrDefault(
             cname, new RoomRealtimeEvent.ConnectionState("disconnected"));
-        return Flux.concat(Flux.just(state), sinkFor(cname).asFlux());
+        return liveEmits.isEmpty()
+            ? Flux.concat(Flux.just(state), sinkFor(cname).asFlux())
+            : Flux.concat(Flux.fromIterable(liveEmits), Flux.just(state), sinkFor(cname).asFlux());
     }
 
     /**
@@ -179,7 +204,42 @@ public class RoomEventSource {
             log.debug("RoomEventSource: emitSynthetic no-op, no subscribers for cname='{}'", cname);
             return;
         }
+        // For ghost-publisher events (stage_join / stage_quit with a userId), touch the
+        // last_seen column so the cleanup job doesn't reap a publisher that's actively
+        // emitting. Non-ghost events don't need a touch — the existing in-memory state
+        // (counts, sinks) is the source of truth for them.
+        if (event instanceof RoomRealtimeEvent.StageJoin sj
+            && sj.stageUser() != null
+            && sj.stageUser().isGhost()) {
+            try {
+                ghostPublishers.touchLastSeen(cname, Long.parseLong(sj.stageUser().userId()));
+            } catch (NumberFormatException ignored) {
+                // Synthetic event with a non-numeric userId (shouldn't happen) — don't crash
+                // the emit over a side-effect touch.
+            }
+        }
         emitWithRevisionBump(cname, event);
+    }
+
+    /**
+     * Builds a minimal synthetic StageUserEvent for a ghost publisher. Most fields default to
+     * null/0/false because the frontend already falls back to its own ghost enrichment
+     * (UserInfoService.ensureFresh) for uid-only pushes, matching how the existing
+     * ghost-audience rendering treats unenriched ghost uids.
+     *
+     * <p>Static so {@code UserController} can reuse it without an instance — same shape both
+     * places; if one changes, the other must too.
+     */
+    public static RoomRealtimeEvent.StageUserEvent syntheticGhostStageUser(long userId) {
+        return new RoomRealtimeEvent.StageUserEvent(
+            String.valueOf(userId), null, null, null,
+            3, 0, null, null, 0, 0, 0, 0, 0L, 0, 0, null, 0, 0, null, null,
+            true, false, true, true, false,
+            null, null, null, null,
+            -1, null, "#ffffff", 0, null,
+            0, null, false, 0L, 0L, 0, 0, null, 0L, 0L, 0, null, 0,
+            0, 0, null, null, 0, null, null, null, null, null,
+            true);
     }
 
     /**

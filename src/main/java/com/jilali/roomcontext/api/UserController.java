@@ -4,7 +4,7 @@ import com.jilali.core.AuthTokenHolder;
 import com.jilali.realtime.RoomEventSource;
 import com.jilali.realtime.dto.RoomRealtimeEvent;
 import com.jilali.roomcontext.application.port.out.UserUpstreamPort;
-import com.jilali.roomcontext.domain.service.GhostPublisherRegistry;
+import com.jilali.roomcontext.domain.service.JdbcGhostPublisherRepository;
 import com.jilali.roomcontext.infrastructure.client.CallerIdentity;
 import com.jilali.roomcontext.infrastructure.dto.user.BatchStatusRequest;
 import com.jilali.roomcontext.infrastructure.dto.user.BatchStatusResponse;
@@ -47,13 +47,13 @@ public class UserController {
 
     private final UserUpstreamPort upstream;
     private final RoomEventSource roomEventSource;
-    private final GhostPublisherRegistry ghostPublishers;
+    private final JdbcGhostPublisherRepository ghostPublishers;
     private final AuthTokenHolder authToken;
 
     public UserController(
             UserUpstreamPort upstream,
             RoomEventSource roomEventSource,
-            GhostPublisherRegistry ghostPublishers,
+            JdbcGhostPublisherRepository ghostPublishers,
             AuthTokenHolder authToken) {
         this.upstream = upstream;
         this.roomEventSource = roomEventSource;
@@ -127,15 +127,7 @@ public class UserController {
      *  (UserInfoService.ensureFresh) for uid-only pushes, matching how the existing
      *  ghost-audience rendering already treats unenriched ghost uids. */
     private RoomRealtimeEvent.StageUserEvent ghostStageUser(long userId) {
-        return new RoomRealtimeEvent.StageUserEvent(
-            String.valueOf(userId), null, null, null,
-            3, 0, null, null, 0, 0, 0, 0, 0L, 0, 0, null, 0, 0, null, null,
-            true, false, true, true, false,
-            null, null, null, null,
-            -1, null, "#ffffff", 0, null,
-            0, null, false, 0L, 0L, 0, 0, null, 0L, 0L, 0, null, 0,
-            0, 0, null, null, 0, null, null, null, null, null,
-            true);
+        return RoomEventSource.syntheticGhostStageUser(userId);
     }
 
     @Post("/heartbeat")

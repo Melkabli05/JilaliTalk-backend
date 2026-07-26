@@ -32,7 +32,12 @@ dependencies {
 
     runtimeOnly 'ch.qos.logback:logback-classic'
     runtimeOnly 'org.yaml:snakeyaml'
-    runtimeOnly 'com.h2database:h2:2.3.232'
+    // SQLite support in Micronaut uses the same micronaut-jdbc-hikari (already on the
+    // classpath via implementation above) plus the Xerial SQLite JDBC driver. There is no
+    // standalone micronaut-jdbc-sqlite module — the Micronaut SQL docs recommend this exact
+    // pairing. db-type: sqlite in application.yml is what tells Micronaut which driver to
+    // load from the URL prefix.
+    runtimeOnly 'org.xerial:sqlite-jdbc:3.46.1.0'
 
     testImplementation 'io.micronaut:micronaut-http-client'
     testImplementation 'io.micronaut.test:micronaut-test-junit5'
