@@ -50,6 +50,21 @@ CREATE INDEX IF NOT EXISTS idx_ghost_publisher_last_seen
     ON ghost_publisher (last_seen);
 
 -- ============================================================================
+-- service_token
+-- ============================================================================
+-- Persists the BFF's service-account HelloTalk JWT across restarts. Seeded from
+-- JILALI_DEFAULT_AUTH_TOKEN on first init; refreshed in place by ImReloginRunner when
+-- status 105 fires and the relogin succeeds. A single-row table (PRIMARY KEY on a
+-- constant 'default' name) — the BFF only ever has one service-account token at a time.
+CREATE TABLE IF NOT EXISTS service_token (
+    name         VARCHAR(64) PRIMARY KEY,
+    jwt          TEXT        NOT NULL,
+    refreshed_at TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- Default row inserted on first init via AuthTokenHolder (separate from the schema
+-- initializer — the row needs the JWT, which is config-driven, not DDL-driven).
+
+-- ============================================================================
 -- profile_cache
 -- ============================================================================
 -- SQLite-backed replacement for the in-process Caffeine `user-info` cache. Stores the

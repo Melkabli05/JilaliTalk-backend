@@ -10,6 +10,8 @@ import io.micronaut.core.annotation.Nullable;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
@@ -42,6 +44,7 @@ public class ImEventSource {
      *  doesn't exist, and auto-relogin is unavailable (status 105 falls back to disconnect). */
     @Nullable
     private final ImReloginRunner reloginRunner;
+    private final DataSource dataSource;
 
     private final AtomicInteger subscriberCount = new AtomicInteger(0);
     private volatile HtImUpstreamConnector connector;
@@ -54,7 +57,7 @@ public class ImEventSource {
 
     public ImEventSource(
         JilaliProperties properties, AuthTokenHolder authToken, ObjectMapper om,
-        ImEventEnricher enricher, @Nullable ImReloginRunner reloginRunner
+        ImEventEnricher enricher, @Nullable ImReloginRunner reloginRunner, DataSource dataSource
     ) {
         this.authToken    = authToken;
         this.deviceId     = properties.deviceId();
@@ -62,6 +65,7 @@ public class ImEventSource {
         this.om           = om;
         this.enricher     = enricher;
         this.reloginRunner = reloginRunner;
+        this.dataSource   = dataSource;
         this.userId       = UidExtractor.uidAsLong(authToken.get(), om);
         log.info("ImEventSource: userId={}", userId);
     }
@@ -76,7 +80,7 @@ public class ImEventSource {
             // after a relogin (see HtImUpstreamConnector.attemptRelogin) picks up the new JWT.
             HtImUpstreamConnector upstream = new HtImUpstreamConnector(
                 userId, authToken.get(), deviceId, deviceModel, om,
-                reloginRunner, authToken
+                reloginRunner, authToken, dataSource
             );
             this.connector = upstream;
 

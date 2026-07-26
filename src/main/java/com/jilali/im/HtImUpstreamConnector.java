@@ -64,6 +64,7 @@ class HtImUpstreamConnector implements AutoCloseable {
      *  status 105 falls back to a clean disconnect (previous behavior, unchanged). */
     private final ImReloginRunner reloginRunner;
     private final AuthTokenHolder authTokenHolder;
+    private final javax.sql.DataSource dataSource;
 
     private final SequentialSender sender = new SequentialSender();
     private final HeartbeatPump heartbeat = new HeartbeatPump("im-hb");
@@ -80,7 +81,8 @@ class HtImUpstreamConnector implements AutoCloseable {
 
     HtImUpstreamConnector(
         long userId, String jwt, String deviceId, String deviceModel, ObjectMapper om,
-        ImReloginRunner reloginRunner, AuthTokenHolder authTokenHolder
+        ImReloginRunner reloginRunner, AuthTokenHolder authTokenHolder,
+        javax.sql.DataSource dataSource
     ) {
         this.userId       = userId;
         this.jwt          = jwt;
@@ -91,6 +93,7 @@ class HtImUpstreamConnector implements AutoCloseable {
         this.notifyMapper = new HtImNotifyMapper(userId);
         this.reloginRunner   = reloginRunner;
         this.authTokenHolder = authTokenHolder;
+        this.dataSource       = dataSource;
     }
 
     void attach(Consumer<ImRealtimeEvent> eventListener, Runnable disconnectListener) {
@@ -290,6 +293,10 @@ class HtImUpstreamConnector implements AutoCloseable {
             log.info("IM: relogin succeeded uid={}, reconnecting", userId);
             this.jwt = newJwt.get();
             authTokenHolder.set(newJwt.get());
+            // Persist the new service-account JWT to the service_token table so the next
+            // BFF restart picks it up. Best-effort — a failed write leaves the in-memory
+            // token live for the rest of this process lifetime.
+            authTokenHolder.persistIfHolder(dataSource);
             // Close the dead socket without marking intentionalClose, so attemptConnect()'s
             // fresh login packet carries the new jwt instead of the reconnect loop giving up.
             WebSocket sock = ws;

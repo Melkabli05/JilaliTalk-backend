@@ -108,7 +108,7 @@ class ProfileBundleServiceTest {
             null,                 // hellotalkEmail
             null                  // hellotalkPassword
         );
-        var authToken = new AuthTokenHolder(properties);
+        var authToken = new AuthTokenHolder(properties, mock(javax.sql.DataSource.class));
         return new ProfileBundleService(stub, encrypted, authToken);
     }
 
