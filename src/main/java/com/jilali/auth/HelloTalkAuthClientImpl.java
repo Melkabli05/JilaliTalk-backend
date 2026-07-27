@@ -222,7 +222,7 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
     }
 
     @Override
-    public Optional<SignCheckResponse> signupCheck(String email, String password, String emailVerifyCode, String iriskToken) {
+    public SignupCheckOutcome signupCheck(String email, String password, String emailVerifyCode, String iriskToken) {
         String deviceId = properties.deviceId();
         long t = System.currentTimeMillis();
         String htntkey = HtntKeyUtil.compute(deviceId, LOGIN_TYPE_EMAIL, t);
@@ -239,22 +239,42 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
             log.warn("signupCheck: upstream returned no response (likely an envelope-level error "
                 + "or transport failure); iriskToken-supplied={}",
                 iriskToken != null && !iriskToken.isBlank());
-            return Optional.empty();
+            return SignupCheckOutcome.rejected(0, "upstream transport failure");
         }
         byte[] response = responseOpt.get();
-        SignCheckResponse parsed = EncbinUtil.decrypt(response, session.sharedSecret(), SignCheckResponse.class);
-        if (parsed == null || parsed.verifyToken() == null || parsed.verifyToken().isBlank()) {
-            // Upstream didn't return a verify_token — that's the "code is incorrect" or
-            // "account could not be created" path. Surface as much of the response as we
-            // can decode so a future debug session has something to look at. (We can't
-            // easily map every upstream field without a capture, but the response class
-            // carries the standard user_info + verify_token + banned_info shape.)
-            log.warn("signupCheck: upstream accepted the request but did not return a verify_token; "
-                + "iriskToken-supplied={} response={}",
-                iriskToken != null && !iriskToken.isBlank(), parsed);
-            return Optional.empty();
+        byte[] json = EncbinUtil.decryptToJson(response, session.sharedSecret());
+        // Every /user_register_center/* response is enveloped
+        // {"status":<int>,"msg":"<str>","data":{...}} — see FINDINGS §127 and §146. Earlier
+        // this method fed the envelope-shaped JSON directly into SignCheckResponse, which
+        // (with FAIL_ON_UNKNOWN_PROPERTIES=false) silently produced a null verify_token
+        // and the user always saw the generic "code is incorrect" 422. Unwrap the envelope
+        // here, then deserialize the inner data.
+        HelloTalkEnvelope<SignCheckResponse> envelope;
+        try {
+            envelope = MAPPER.readValue(json, MAPPER.getTypeFactory()
+                .constructParametricType(HelloTalkEnvelope.class, SignCheckResponse.class));
+        } catch (java.io.IOException e) {
+            log.warn("signupCheck: response isn't a JSON envelope: {}", e.getMessage());
+            return SignupCheckOutcome.rejected(0, "upstream returned a non-envelope body");
         }
-        return Optional.of(parsed);
+        SignCheckResponse parsed = envelope.data();
+        if (parsed == null || parsed.verifyToken() == null || parsed.verifyToken().isBlank()) {
+            // Upstream rejected the request — surface the envelope status + msg so the
+            // frontend can pick a more specific error message than "code is incorrect".
+            // The status codes match the Android client's h21/e0 mapping (see the smali
+            // for the full table). Common ones this BFF will surface:
+            //   208 (0xd0) verification_code_error
+            //   105 (0x69)  too many signup attempts within 24h
+            //   109 (0x6d)  password_format_incorrect
+            //   125 (0x7d)  your_account_has_been_hidden
+            //   212 (0xd4)  verification_failed
+            log.warn("signupCheck: upstream rejected the request (status={} msg={}); "
+                + "iriskToken-supplied={} parsed={}",
+                envelope.status(), envelope.msg(),
+                iriskToken != null && !iriskToken.isBlank(), parsed);
+            return SignupCheckOutcome.rejected(envelope.status(), envelope.msg());
+        }
+        return SignupCheckOutcome.accepted(parsed);
     }
 
     // ---- shared wire plumbing ----

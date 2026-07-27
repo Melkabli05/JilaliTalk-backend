@@ -36,10 +36,16 @@ public interface HelloTalkAuthClient {
     /** Nickname availability/validity check — independent of the rest of the signup pipeline. */
     void checkNickname(String nickname);
 
-    /** Terminal signup step. Returns {@link Optional#empty()} on rejection (email taken, bad
-     *  code, or an anti-cheat refusal this BFF has no way to satisfy). Never returns a JWT —
-     *  the caller must fall back to {@link #login} to mint one. The {@code iriskToken} is the
-     *  value returned by {@link #regPrepare} (or empty string if the bind failed) and is
-     *  required by the upstream on the /v3/reg/* flow per FINDINGS.md §7.3. */
-    Optional<SignCheckResponse> signupCheck(String email, String password, String emailVerifyCode, String iriskToken);
+    /**
+     * Terminal signup step. The returned {@link SignupCheckOutcome} carries both the parsed
+     * inner {@link SignCheckResponse} data (when verify_token is present, success) and the
+     * upstream envelope {@code status} + {@code msg} — so callers can map specific upstream
+     * status codes (208 verification_code_error, 105 too many attempts, 109 password format,
+     * 125 account hidden, 212 verification failed — same table the Android client's
+     * {@code h21/e0} smali maps) to distinct UX without re-parsing the wire.
+     *
+     * <p>{@link SignupCheckOutcome#rejected(int, String)} with {@code upstreamStatus == 0}
+     * means an envelope-level failure (transport / parse) with no upstream status to report.
+     */
+    SignupCheckOutcome signupCheck(String email, String password, String emailVerifyCode, String iriskToken);
 }

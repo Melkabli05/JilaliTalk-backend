@@ -96,16 +96,69 @@ public final class HelloTalkAuthService {
      */
     public SignupOutcome signup(String email, String password, String emailVerifyCode) {
         String iriskToken = client.regPrepare().orElse("jilalibff-no-sdk-available");
-        if (client.signupCheck(email, password, emailVerifyCode, iriskToken).isEmpty()) {
-            return new SignupOutcome.Rejected(
-                "HelloTalk rejected the signup request (invalid code, email already registered, "
-                    + "or an anti-cheat check this BFF cannot satisfy)");
-        }
-        return switch (login(email, password)) {
-            case LoginOutcome.Authenticated(var session, var user) -> new SignupOutcome.Created(session, user);
-            case LoginOutcome.InvalidCredentials ignored -> new SignupOutcome.Rejected(
-                "Account was created but the immediate follow-up login failed; try logging in manually");
+        return switch (client.signupCheck(email, password, emailVerifyCode, iriskToken)) {
+            case SignupCheckOutcome.Accepted accepted -> switch (login(email, password)) {
+                case LoginOutcome.Authenticated(var session, var user) ->
+                    new SignupOutcome.Created(session, user);
+                case LoginOutcome.InvalidCredentials loginFail ->
+                    new SignupOutcome.Rejected(0, "Account was created but the follow-up login failed; try logging in manually");
+            };
+            case SignupCheckOutcome.Rejected(int status, String msg) -> {
+                // The status code table mirrors the Android client's h21/e0 smali
+                // (re_output/apktool_out/smali_classes22/h21/e0.smali lines 196-1190 —
+                // the packed-switch on status). Common ones the frontend will surface:
+                //   208 (0xd0) verification_code_error
+                //   105 (0x69)  too many signup attempts within 24h
+                //   109 (0x6d)  password_format_incorrect
+                //   125 (0x7d)  your_account_has_been_hidden
+                //   212 (0xd4)  verification_failed
+                //   213 (0xd5)  silent re-route
+                //   100 (0x64)  generic server_error
+                //   101 (0x65)  invalid_email_address
+                //   102 (0x66)  facebook_connection_fail
+                //   103 (0x67)/104 (0x68) silent
+                //   106 (0x6a)  cant_register_new_account (multi-account on this device)
+                //   107 (0x6b)  Existing Account fallback
+                //   108 (0x6c)  failed
+                //   201 (0xc9)  phone_number_is_not_valid
+                //   202 (0xca)  phone_number_is_bound
+                //   204 (0xcc)  sending_failed
+                //   206 (0xce)/207 (0xcf) 24h-blocked
+                //   551 (0x227) network-lost
+                String reason = mapSignupRejection(status, msg);
+                yield new SignupOutcome.Rejected(status, reason);
+            }
         };
+    }
+
+    /**
+     * Translates the upstream envelope {@code status} (from the Android client's
+     * {@code h21/e0} smali status code table) to a user-facing message. Falls back to
+     * the raw upstream {@code msg} field if present, otherwise to a generic message.
+     * {@code status == 0} means envelope-level failure (transport / parse) — not an
+     * upstream rejection — and gets a distinct generic message.
+     */
+    private static String mapSignupRejection(int status, String upstreamMsg) {
+        String mapped = switch (status) {
+            case 208 -> "That verification code is incorrect. Please try again.";
+            case 212 -> "Verification failed. Please request a new code.";
+            case 105, 111, 206, 207 -> "Too many attempts. Try again in 24 hours.";
+            case 109 -> "Password format is incorrect.";
+            case 101 -> "That email address is invalid.";
+            case 102 -> "Connection to the third-party login provider failed.";
+            case 100, 551 -> "The server is temporarily unavailable. Please try again shortly.";
+            case 106, 125 -> "Your account has been hidden. Contact support to recover it.";
+            case 107 -> "An account with that email already exists. Try signing in instead.";
+            case 108 -> "Signup failed. Please try again.";
+            case 202 -> "That phone number is already bound to an account.";
+            case 201 -> "That phone number is not valid.";
+            case 204 -> "We could not send the verification code. Please try again.";
+            case 0 -> "Could not reach the signup service. Please check your connection.";
+            default -> upstreamMsg != null && !upstreamMsg.isBlank()
+                ? upstreamMsg
+                : "Signup failed (upstream status " + status + "). Please try again.";
+        };
+        return mapped;
     }
 
     /**

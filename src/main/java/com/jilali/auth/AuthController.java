@@ -5,6 +5,7 @@ import com.jilali.auth.dto.LoginRequest;
 import com.jilali.auth.dto.NicknameCheckRequest;
 import com.jilali.auth.dto.SendEmailCodeRequest;
 import com.jilali.auth.dto.SignupCheckRequest;
+import io.micronaut.serde.annotation.Serdeable;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -98,10 +99,19 @@ public class AuthController {
         return switch (authService.signup(request.email(), request.password(), request.emailVerifyCode())) {
             case SignupOutcome.Created(var session, var user) ->
                 withSessionCookie(HttpResponse.created(new AuthResponse(user)), session.id());
-            case SignupOutcome.Rejected(var reason) ->
-                HttpResponse.status(HttpStatus.UNPROCESSABLE_ENTITY).body(reason);
+            case SignupOutcome.Rejected(var status, var reason) ->
+                HttpResponse.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                    .body(new SignupRejection(status, reason));
         };
     }
+
+    /** Wire shape of a 422 from POST /api/auth/signup/check. {@code upstreamStatus}
+     *  mirrors the {@code status} field the Android client's {@code h21/e0} smali
+     *  packed-switches on (see re_output/apktool_out/smali_classes22/h21/e0.smali);
+     *  the Angular frontend reads {@code detail} for the user-facing text and
+     *  {@code upstreamStatus} to pick a recovery action (resend code vs wait 24h). */
+    @Serdeable
+    public record SignupRejection(int upstreamStatus, String detail) {}
 
     private Optional<String> sessionId(HttpRequest<?> request) {
         return request.getCookies().findCookie(SESSION_COOKIE).map(Cookie::getValue);
