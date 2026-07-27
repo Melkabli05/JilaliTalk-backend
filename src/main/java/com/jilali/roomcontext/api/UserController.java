@@ -17,6 +17,7 @@ import com.jilali.roomcontext.infrastructure.dto.user.RoomUserListResponse;
 import com.jilali.roomcontext.infrastructure.dto.user.RoomUserProfileResponse;
 import com.jilali.roomcontext.infrastructure.dto.user.UserInfo;
 import com.jilali.roomcontext.infrastructure.dto.user.UserStatus;
+import com.jilali.roomcontext.dto.RoomKickRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
@@ -119,6 +120,41 @@ public class UserController {
         }
         roomEventSource.emitSynthetic(cname, new RoomRealtimeEvent.StageQuit(String.valueOf(userId)));
         log.info("UserController: userId={} stopped ghost-publishing in cname='{}' busiType={}", userId, cname, busiType);
+        return HttpResponse.noContent();
+    }
+
+    /**
+     * Kick a user from the room entirely (not just the stage). The upstream HelloTalk
+     * service has no /room/kick endpoint (re_output/FINDINGS.md §7.5), so the BFF
+     * synthesizes the room_kick WS event from the RoomEventSource.emitSynthetic channel.
+     * The target user's frontend (if connected) receives the event and shows a
+     * 'You were removed by a mod' toast, then redirects out of the room.
+     *
+     * <p>Best-effort / single-instance: if there are no active WS subscribers, the
+     * emitSynthetic is a no-op (per its contract). Multi-instance BFFs would need
+     * a cross-instance broadcast channel — out of scope for this PR.
+     */
+    @Post("/rooms/{cname}/kick")
+    public HttpResponse<Void> kick(@NotBlank String cname, @Valid @Body RoomKickRequest request) {
+        Long caller = CallerIdentity.currentUserId(authToken);
+        if (caller == null) {
+            log.warn("UserController: kick called with no resolvable caller identity, cname='{}'", cname);
+            return HttpResponse.badRequest();
+        }
+        if (request == null || request.userId() <= 0) {
+            log.warn("UserController: kick called with invalid request body, cname='{}' request={}", cname, request);
+            return HttpResponse.badRequest();
+        }
+        String managerName = request.managerName() != null && !request.managerName().isBlank()
+            ? request.managerName()
+            : "a moderator";
+        roomEventSource.emitSynthetic(cname, new RoomRealtimeEvent.RoomKick(
+            String.valueOf(request.userId()),
+            request.nickname() != null ? request.nickname() : "",
+            managerName,
+            cname
+        ));
+        log.info("UserController: caller={} kicked userId={} from cname='{}'", caller, request.userId(), cname);
         return HttpResponse.noContent();
     }
 
