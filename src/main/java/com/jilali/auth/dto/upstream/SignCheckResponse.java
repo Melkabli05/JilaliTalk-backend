@@ -13,4 +13,18 @@ import io.micronaut.serde.annotation.Serdeable;
  * {@code jwt}/{@code access_token} field at all — that fallback isn't a simplification, it's required.
  */
 @Serdeable
-public record SignCheckResponse(@JsonProperty("verify_token") @Nullable String verifyToken) {}
+public record SignCheckResponse(
+    @JsonProperty("verify_token") @Nullable String verifyToken,
+    @JsonProperty("user_info") @Nullable UserInfo userInfo
+) {
+    /**
+     * Subset of HelloTalk's {@code user_info} the BFF actually consumes after
+     * re-reading {@code re_output/apktool_out/smali_classes22/com/hellotalk/sign/register/data/SignCheckResp$UserInfoBean.smali}
+     * and the per-field assignments at j21/b.smali:353. {@code bind_id} is the per-attempt
+     * identifier upstream issues in /v3/check responses and is what the smali's SignProfileV2Activity
+     * then threads into /v3/reg/prepare — not the device id (confirmed by the live capture:
+     * the static device_id gets rejected with status=100 "invalid bind_id").
+     */
+    @Serdeable
+    public record UserInfo(@JsonProperty("bind_id") @Nullable String bindId) {}
+}

@@ -172,9 +172,25 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
     }
 
     @Override
-    public Optional<String> regPrepare() {
+    public Optional<String> regPrepare(String bindId) {
         try {
-            var request = new RegPrepareRequest(properties.deviceId(), "");
+            // bind_id comes from SignCheckResp.user_info.bind_id (the smali's
+            // j21/b.f path passes nothing here on the first /v3/check call; the
+            // Android client then navigates to SignProfileV2Activity, which calls
+            // h21/s.a(user_info.bind_id, ...) -> h21/q -> h21/r -> here, threading the
+            // user_info.bind_id into the regPrepare request). The bind_id is NOT
+            // the device id (per the smali, the static device_id returned upstream's
+            // "invalid bind_id" status=100 — see /v3/reg/prepare rejection captured
+            // live during this fix). If bindId is null/blank, skip the call: the
+            // /v3/check endpoint accepts an empty irisk_token placeholder for the
+            // first signup attempt (FINDINGS §133 "behavior_validate is checked for
+            // presence only"), so regPrepare on the FIRST call is not strictly
+            // required.
+            if (bindId == null || bindId.isBlank()) {
+                log.info("reg/prepare: skipped (no bind_id yet — first /v3/check runs without it)");
+                return Optional.empty();
+            }
+            var request = new RegPrepareRequest(bindId, "");
             // reg/prepare is `ht/encbin` content-type — the response body is the cc2018
             // ciphertext (XOR-encrypted random bytes), NOT a JSON envelope. We don't
             // actually need the irisk_token from upstream (the BFF sends an empty one
@@ -191,15 +207,25 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
                 log.warn("reg/prepare: no response (transport failure)");
                 return Optional.empty();
             }
+            // Every /user_register_center response is enveloped per FINDINGS §146:
+            // {"status":0,"msg":"success","data":{...}}. Unwrap the envelope first,
+            // THEN look for irisk_token in the inner data. (Earlier version fed the
+            // enveloped JSON into RegPrepareResponse which expected irisk_token at the
+            // top level — wrong, so the BFF always fell back to the placeholder and
+            // /v3/check returned status=212 "email verify fail".)
+            byte[] json = EncbinUtil.decryptToJson(response.get(), session.sharedSecret());
             try {
-                RegPrepareResponse parsed = EncbinUtil.decrypt(
-                    response.get(), session.sharedSecret(), RegPrepareResponse.class);
-                String token = parsed != null ? parsed.iriskToken() : null;
+                HelloTalkEnvelope<RegPrepareResponse> envelope = MAPPER.readValue(json,
+                    MAPPER.getTypeFactory().constructParametricType(
+                        HelloTalkEnvelope.class, RegPrepareResponse.class));
+                RegPrepareResponse data = envelope.data();
+                String token = data != null ? data.iriskToken() : null;
                 if (token != null && !token.isBlank()) {
                     log.info("reg/prepare: captured irisk_token ({} chars)", token.length());
                     return Optional.of(token);
                 }
-                log.info("reg/prepare: decrypted response had no irisk_token field — using placeholder");
+                log.info("reg/prepare: decrypted envelope had no irisk_token in data (status={} msg={}) — using placeholder",
+                    envelope.status(), envelope.msg());
             } catch (Exception parseEx) {
                 log.debug("reg/prepare: decrypted body wasn't a JSON envelope ({}); treating as success-without-token",
                     parseEx.getMessage());

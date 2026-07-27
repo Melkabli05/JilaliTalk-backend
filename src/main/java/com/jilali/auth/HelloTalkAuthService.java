@@ -60,7 +60,10 @@ public final class HelloTalkAuthService {
     }
 
     public void signupPrepare() {
-        client.regPrepare();
+        // No bind_id available on the frontend's first call. The smali triggers
+        // /v3/reg/prepare from SignProfileV2Activity with user_info.bind_id —
+        // the BFF's signup() path now does the same after /v3/check succeeds.
+        client.regPrepare(null);
     }
 
     public void signupSendEmailCode(String email) {
@@ -95,36 +98,34 @@ public final class HelloTalkAuthService {
      * content is never validated — it just has to exist.
      */
     public SignupOutcome signup(String email, String password, String emailVerifyCode) {
-        String iriskToken = client.regPrepare().orElse("jilalibff-no-sdk-available");
-        return switch (client.signupCheck(email, password, emailVerifyCode, iriskToken)) {
-            case SignupCheckOutcome.Accepted accepted -> switch (login(email, password)) {
-                case LoginOutcome.Authenticated(var session, var user) ->
-                    new SignupOutcome.Created(session, user);
-                case LoginOutcome.InvalidCredentials loginFail ->
-                    new SignupOutcome.Rejected(0, "Account was created but the follow-up login failed; try logging in manually");
-            };
+        // Per the smali's actual flow (re_output/apktool_out/smali_classes22/j21/b.smali
+        // + h21/e0 + SignProfileV2Activity): /v3/check is called FIRST with empty
+        // irisk_token. If it succeeds the response carries user_info.bind_id, which
+        // the smali then threads into a follow-up /v3/reg/prepare to fetch the
+        // irisk_token for any subsequent calls. This is opposite to the BFF's
+        // previous (wrong) assumption that regPrepare runs first and returns the
+        // bind_id. The previous assumption sent the static device_id as bind_id,
+        // which upstream rejected with status=100 "invalid bind_id" — leaving
+        // the BFF to send a placeholder irisk_token and get "code is incorrect"
+        // back on /v3/check.
+        return switch (client.signupCheck(email, password, emailVerifyCode, "")) {
+            case SignupCheckOutcome.Accepted accepted -> {
+                // /v3/check succeeded — bind to /v3/reg/prepare using the bind_id
+                // the smali extracts from SignCheckResp.user_info.bind_id, then
+                // mint a JWT via the standard email+password login.
+                String bindId = accepted.data().userInfo() != null
+                    ? accepted.data().userInfo().bindId() : null;
+                if (bindId != null && !bindId.isBlank()) {
+                    client.regPrepare(bindId);
+                }
+                yield switch (login(email, password)) {
+                    case LoginOutcome.Authenticated(var session, var user) ->
+                        new SignupOutcome.Created(session, user);
+                    case LoginOutcome.InvalidCredentials loginFail ->
+                        new SignupOutcome.Rejected(0, "Account was created but the follow-up login failed; try logging in manually");
+                };
+            }
             case SignupCheckOutcome.Rejected(int status, String msg) -> {
-                // The status code table mirrors the Android client's h21/e0 smali
-                // (re_output/apktool_out/smali_classes22/h21/e0.smali lines 196-1190 —
-                // the packed-switch on status). Common ones the frontend will surface:
-                //   208 (0xd0) verification_code_error
-                //   105 (0x69)  too many signup attempts within 24h
-                //   109 (0x6d)  password_format_incorrect
-                //   125 (0x7d)  your_account_has_been_hidden
-                //   212 (0xd4)  verification_failed
-                //   213 (0xd5)  silent re-route
-                //   100 (0x64)  generic server_error
-                //   101 (0x65)  invalid_email_address
-                //   102 (0x66)  facebook_connection_fail
-                //   103 (0x67)/104 (0x68) silent
-                //   106 (0x6a)  cant_register_new_account (multi-account on this device)
-                //   107 (0x6b)  Existing Account fallback
-                //   108 (0x6c)  failed
-                //   201 (0xc9)  phone_number_is_not_valid
-                //   202 (0xca)  phone_number_is_bound
-                //   204 (0xcc)  sending_failed
-                //   206 (0xce)/207 (0xcf) 24h-blocked
-                //   551 (0x227) network-lost
                 String reason = mapSignupRejection(status, msg);
                 yield new SignupOutcome.Rejected(status, reason);
             }
