@@ -336,13 +336,20 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
 
     private Optional<byte[]> encbinExchange(String path, byte[] encryptedBody, String pubHeader, String stage) {
         try {
-            // Content-Type is "application/json" on the wire for ht/encbin too — confirmed
-            // against a real captured `profile/v2/userinfo` request (raw encrypted bytes as the
-            // body despite the JSON content-type declaration; upstream apparently keys off this
-            // exact literal value regardless of the body's actual shape). Again, no separate
-            // "ht-content-type" header exists on the wire.
+            // ht/encbin wire format: BOTH the ht-content-type marker header AND
+            // Content-Type: application/octet-stream must be sent. Cross-checked against
+            // re_output/apktool_out/smali/wm/c.smali (the OkHttp interceptor that dispatches
+            // on ht-content-type) and re_output/apktool_out/smali_classes22/com/hellotalk/sign/service/
+            // LoginService.smali:89, AccountVerifyService.smali:83 — every ht/encbin endpoint
+            // declares @Headers({"ht-content-type:ht/encbin"}) and the interceptor reads that
+            // exact string off the request to decide which cipher to apply. The other working
+            // ht/encbin caller in this BFF (UserProfileEncryptedClient.fetchUserInfo) sends
+            // both headers identically. Sending application/json + no ht-content-type (the
+            // previous value) caused the upstream to silently accept the request then return
+            // an envelope with no verify_token → the BFF's 422 "code is incorrect" path.
             HttpRequest<byte[]> httpRequest = androidHeaders(HttpRequest.POST(path, encryptedBody))
-                .header("Content-Type", "application/json")
+                .header("ht-content-type", "ht/encbin")
+                .header("Content-Type", "application/octet-stream")
                 .header("x-ht-pub", pubHeader);
             return Optional.ofNullable(httpClient.toBlocking().retrieve(httpRequest, byte[].class));
         } catch (HttpClientResponseException e) {
