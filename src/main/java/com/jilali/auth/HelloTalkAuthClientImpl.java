@@ -183,29 +183,27 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
             // the call succeeded. Returning Optional.empty() here means "best-effort,
             // proceed without a token" — which the HelloTalkAuthService.signup handles
             // correctly.
+            var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
+            byte[] encrypted = EncbinUtil.encrypt(request, session.sharedSecret());
             Optional<byte[]> response = encbinExchange(
-                "/user_register_center/v3/reg/prepare", request, null, "regPrepare");
+                "/user_register_center/v3/reg/prepare", encrypted, session.headerValue(), "regPrepare");
             if (response.isEmpty()) {
                 log.warn("reg/prepare: no response (transport failure)");
                 return Optional.empty();
             }
-            // Best-effort: try to parse as JSON in case upstream ever changes the
-            // content-type. The cc2018 form (random bytes) will throw — we catch
-            // and treat as success. Per the JSON branch's docs, the BFF's actual
-            // behavior is "irisk_token is empty regardless of what upstream returns",
-            // so this parser exists for future-proofing only.
             try {
-                var parsed = MAPPER.readValue(response.get(), RegPrepareResponse.class);
+                RegPrepareResponse parsed = EncbinUtil.decrypt(
+                    response.get(), session.sharedSecret(), RegPrepareResponse.class);
                 String token = parsed != null ? parsed.iriskToken() : null;
                 if (token != null && !token.isBlank()) {
                     log.info("reg/prepare: captured irisk_token ({} chars)", token.length());
                     return Optional.of(token);
                 }
+                log.info("reg/prepare: decrypted response had no irisk_token field — using placeholder");
             } catch (Exception parseEx) {
-                log.debug("reg/prepare: response is not JSON (cc2018 ciphertext expected) — treating as success: {}",
+                log.debug("reg/prepare: decrypted body wasn't a JSON envelope ({}); treating as success-without-token",
                     parseEx.getMessage());
             }
-            log.info("reg/prepare: completed (no irisk_token in response — best-effort path)");
             return Optional.empty();
         } catch (Exception e) {
             log.warn("reg/prepare failed (best-effort, continuing signup): {}", e.getMessage());
