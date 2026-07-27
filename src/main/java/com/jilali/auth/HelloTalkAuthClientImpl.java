@@ -8,19 +8,11 @@ import com.jilali.auth.dto.upstream.EmailPreLoginRequest;
 import com.jilali.auth.dto.upstream.EmailPreLoginResponse;
 import com.jilali.auth.dto.upstream.HelloTalkEnvelope;
 import com.jilali.auth.dto.upstream.LoginResponse;
-import com.jilali.auth.dto.upstream.NicknameCheckUpstreamRequest;
-import com.jilali.auth.dto.upstream.RegPrepareRequest;
-import com.jilali.auth.dto.upstream.RegPrepareResponse;
-import com.jilali.auth.dto.upstream.SendEmailCodeUpstreamRequest;
-import com.jilali.auth.dto.upstream.SignCheckRequest;
-import com.jilali.auth.dto.upstream.SignCheckResponse;
 import com.jilali.core.JilaliException;
 import com.jilali.core.JilaliProperties;
 import com.jilali.crypto.ApkSignatureGenerator;
 import com.jilali.crypto.Cc2018Cipher;
-import com.jilali.crypto.Curve25519SessionGenerator;
 import com.jilali.crypto.EncbinUtil;
-import com.jilali.crypto.HtntKeyUtil;
 import com.jilali.crypto.Md5Util;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.MutableHttpRequest;
@@ -36,10 +28,9 @@ import java.util.function.UnaryOperator;
 
 /**
  * Real implementation of {@link HelloTalkAuthClient}: hand-built HTTP calls (not a declarative
- * {@code @Client} interface — these endpoints need per-call {@code bin/cc2018}/{@code ht/encbin}
- * body encoding and custom headers, the same situation {@code JilaliGateway.userInfo()}/
- * {@code aiTranslate()} are already in) against HelloTalk's {@code /user_register_center/**}
- * and {@code /user_info_updater/**} auth microservice.
+ * {@code @Client} interface — these endpoints need per-call {@code bin/cc2018} body encoding
+ * and custom headers, the same situation {@code JilaliGateway.userInfo()}/{@code aiTranslate()}
+ * are already in) against HelloTalk's {@code /user_register_center/**} auth microservice.
  * <p>
  * This BFF has no real Android device to read telemetry from, so the device-fingerprint fields
  * every request needs (os_lang, net_type, jail_break, ...) are static persona constants below —
@@ -171,138 +162,6 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
         return parsed.filter(r -> r.userInfo() != null && r.userInfo().jwt() != null && !r.userInfo().jwt().isBlank());
     }
 
-    @Override
-    public Optional<String> regPrepare(String bindId) {
-        try {
-            // bind_id comes from SignCheckResp.user_info.bind_id (the smali's
-            // j21/b.f path passes nothing here on the first /v3/check call; the
-            // Android client then navigates to SignProfileV2Activity, which calls
-            // h21/s.a(user_info.bind_id, ...) -> h21/q -> h21/r -> here, threading the
-            // user_info.bind_id into the regPrepare request). The bind_id is NOT
-            // the device id (per the smali, the static device_id returned upstream's
-            // "invalid bind_id" status=100 — see /v3/reg/prepare rejection captured
-            // live during this fix). If bindId is null/blank, skip the call: the
-            // /v3/check endpoint accepts an empty irisk_token placeholder for the
-            // first signup attempt (FINDINGS §133 "behavior_validate is checked for
-            // presence only"), so regPrepare on the FIRST call is not strictly
-            // required.
-            if (bindId == null || bindId.isBlank()) {
-                log.info("reg/prepare: skipped (no bind_id yet — first /v3/check runs without it)");
-                return Optional.empty();
-            }
-            var request = new RegPrepareRequest(bindId, "");
-            // reg/prepare is `ht/encbin` content-type — the response body is the cc2018
-            // ciphertext (XOR-encrypted random bytes), NOT a JSON envelope. We don't
-            // actually need the irisk_token from upstream (the BFF sends an empty one
-            // in the next request anyway — the upstream's `reg/*` flow was confirmed
-            // live with empty tokens per FINDINGS.md §7.4), so we just need to know
-            // the call succeeded. Returning Optional.empty() here means "best-effort,
-            // proceed without a token" — which the HelloTalkAuthService.signup handles
-            // correctly.
-            var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
-            byte[] encrypted = EncbinUtil.encrypt(request, session.sharedSecret());
-            Optional<byte[]> response = encbinExchange(
-                "/user_register_center/v3/reg/prepare", encrypted, session.headerValue(), "regPrepare");
-            if (response.isEmpty()) {
-                log.warn("reg/prepare: no response (transport failure)");
-                return Optional.empty();
-            }
-            // Every /user_register_center response is enveloped per FINDINGS §146:
-            // {"status":0,"msg":"success","data":{...}}. Unwrap the envelope first,
-            // THEN look for irisk_token in the inner data. (Earlier version fed the
-            // enveloped JSON into RegPrepareResponse which expected irisk_token at the
-            // top level — wrong, so the BFF always fell back to the placeholder and
-            // /v3/check returned status=212 "email verify fail".)
-            byte[] json = EncbinUtil.decryptToJson(response.get(), session.sharedSecret());
-            try {
-                HelloTalkEnvelope<RegPrepareResponse> envelope = MAPPER.readValue(json,
-                    MAPPER.getTypeFactory().constructParametricType(
-                        HelloTalkEnvelope.class, RegPrepareResponse.class));
-                RegPrepareResponse data = envelope.data();
-                String token = data != null ? data.iriskToken() : null;
-                if (token != null && !token.isBlank()) {
-                    log.info("reg/prepare: captured irisk_token ({} chars)", token.length());
-                    return Optional.of(token);
-                }
-                log.info("reg/prepare: decrypted envelope had no irisk_token in data (status={} msg={}) — using placeholder",
-                    envelope.status(), envelope.msg());
-            } catch (Exception parseEx) {
-                log.debug("reg/prepare: decrypted body wasn't a JSON envelope ({}); treating as success-without-token",
-                    parseEx.getMessage());
-            }
-            return Optional.empty();
-        } catch (Exception e) {
-            log.warn("reg/prepare failed (best-effort, continuing signup): {}", e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    @Override
-    public void sendEmailCode(String email) {
-        encbinPost("/user_register_center/v3/send_email_code", SendEmailCodeUpstreamRequest.forSignup(email));
-    }
-
-    @Override
-    public void checkNickname(String nickname) {
-        encbinPost("/user_register_center/v3/reg/profile_check", new NicknameCheckUpstreamRequest(nickname));
-    }
-
-    @Override
-    public SignupCheckOutcome signupCheck(String email, String password, String emailVerifyCode, String iriskToken) {
-        String deviceId = properties.deviceId();
-        long t = System.currentTimeMillis();
-        String htntkey = HtntKeyUtil.compute(deviceId, LOGIN_TYPE_EMAIL, t);
-        var request = SignCheckRequest.forEmailSignup(
-            email, password, emailVerifyCode,
-            ApkSignatureGenerator.VERSION_NAME, CLIENT_LANG, deviceId,
-            t, htntkey, NO_SIM_PLACEHOLDER, NO_SIM_PLACEHOLDER, iriskToken);
-
-        var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
-        byte[] encrypted = EncbinUtil.encrypt(request, session.sharedSecret());
-        Optional<byte[]> responseOpt = encbinExchange(
-            "/user_register_center/v3/check", encrypted, session.headerValue(), "signupCheck");
-        if (responseOpt.isEmpty()) {
-            log.warn("signupCheck: upstream returned no response (likely an envelope-level error "
-                + "or transport failure); iriskToken-supplied={}",
-                iriskToken != null && !iriskToken.isBlank());
-            return SignupCheckOutcome.rejected(0, "upstream transport failure");
-        }
-        byte[] response = responseOpt.get();
-        byte[] json = EncbinUtil.decryptToJson(response, session.sharedSecret());
-        // Every /user_register_center/* response is enveloped
-        // {"status":<int>,"msg":"<str>","data":{...}} — see FINDINGS §127 and §146. Earlier
-        // this method fed the envelope-shaped JSON directly into SignCheckResponse, which
-        // (with FAIL_ON_UNKNOWN_PROPERTIES=false) silently produced a null verify_token
-        // and the user always saw the generic "code is incorrect" 422. Unwrap the envelope
-        // here, then deserialize the inner data.
-        HelloTalkEnvelope<SignCheckResponse> envelope;
-        try {
-            envelope = MAPPER.readValue(json, MAPPER.getTypeFactory()
-                .constructParametricType(HelloTalkEnvelope.class, SignCheckResponse.class));
-        } catch (java.io.IOException e) {
-            log.warn("signupCheck: response isn't a JSON envelope: {}", e.getMessage());
-            return SignupCheckOutcome.rejected(0, "upstream returned a non-envelope body");
-        }
-        SignCheckResponse parsed = envelope.data();
-        if (parsed == null || parsed.verifyToken() == null || parsed.verifyToken().isBlank()) {
-            // Upstream rejected the request — surface the envelope status + msg so the
-            // frontend can pick a more specific error message than "code is incorrect".
-            // The status codes match the Android client's h21/e0 mapping (see the smali
-            // for the full table). Common ones this BFF will surface:
-            //   208 (0xd0) verification_code_error
-            //   105 (0x69)  too many signup attempts within 24h
-            //   109 (0x6d)  password_format_incorrect
-            //   125 (0x7d)  your_account_has_been_hidden
-            //   212 (0xd4)  verification_failed
-            log.warn("signupCheck: upstream rejected the request (status={} msg={}); "
-                + "iriskToken-supplied={} parsed={}",
-                envelope.status(), envelope.msg(),
-                iriskToken != null && !iriskToken.isBlank(), parsed);
-            return SignupCheckOutcome.rejected(envelope.status(), envelope.msg());
-        }
-        return SignupCheckOutcome.accepted(parsed);
-    }
-
     // ---- shared wire plumbing ----
 
     private Optional<byte[]> cc2018Exchange(String path, Object requestBody, String stage,
@@ -361,47 +220,6 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
         }
     }
 
-    private void encbinPost(String path, Object requestBody) {
-        var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
-        byte[] encrypted = EncbinUtil.encrypt(requestBody, session.sharedSecret());
-        encbinExchange(path, encrypted, session.headerValue(), path)
-            .orElseThrow(() -> JilaliException.upstreamFailure(path, null));
-    }
-
-    /** Object-overload for encbinExchange: serializes the request, encrypts, calls upstream,
-     *  and returns the raw response bytes (so the caller can deserialize the typed result).
-     *  Returns Optional.empty() on any failure short of a hard transport/decode error
-     *  (the caller is expected to log and degrade gracefully). */
-    private Optional<byte[]> encbinExchange(String path, Object requestBody, String pubHeader, String stage) {
-        var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
-        byte[] encrypted = EncbinUtil.encrypt(requestBody, session.sharedSecret());
-        return encbinExchange(path, encrypted, pubHeader != null ? pubHeader : session.headerValue(), stage);
-    }
-
-    private Optional<byte[]> encbinExchange(String path, byte[] encryptedBody, String pubHeader, String stage) {
-        try {
-            // ht/encbin wire format: BOTH the ht-content-type marker header AND
-            // Content-Type: application/octet-stream must be sent. Cross-checked against
-            // re_output/apktool_out/smali/wm/c.smali (the OkHttp interceptor that dispatches
-            // on ht-content-type) and re_output/apktool_out/smali_classes22/com/hellotalk/sign/service/
-            // LoginService.smali:89, AccountVerifyService.smali:83 — every ht/encbin endpoint
-            // declares @Headers({"ht-content-type:ht/encbin"}) and the interceptor reads that
-            // exact string off the request to decide which cipher to apply. The other working
-            // ht/encbin caller in this BFF (UserProfileEncryptedClient.fetchUserInfo) sends
-            // both headers identically. Sending application/json + no ht-content-type (the
-            // previous value) caused the upstream to silently accept the request then return
-            // an envelope with no verify_token → the BFF's 422 "code is incorrect" path.
-            HttpRequest<byte[]> httpRequest = androidHeaders(HttpRequest.POST(path, encryptedBody))
-                .header("ht-content-type", "ht/encbin")
-                .header("Content-Type", "application/octet-stream")
-                .header("x-ht-pub", pubHeader);
-            return Optional.ofNullable(httpClient.toBlocking().retrieve(httpRequest, byte[].class));
-        } catch (HttpClientResponseException e) {
-            log.debug("{} rejected by upstream: status={}", stage, e.getStatus());
-            return Optional.empty();
-        }
-    }
-
     private MutableHttpRequest<byte[]> androidHeaders(MutableHttpRequest<byte[]> request) {
         return request
             .header("Accept", "*/*")
@@ -416,13 +234,6 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
             .header("x-ht-lang", "English")
             .header("x-ht-channel", CHANNEL)
             .header("x-ht-did", properties.deviceId());
-        // Authorization/x-ht-token/x-ht-uid are deliberately left unset here — real captured
-        // traffic shows the app attaches whatever credential it has cached even on a pre-auth
-        // call like pre_login, so falling through to DefaultHeadersClientFilter's shared-token
-        // default (the same thing every other endpoint in this BFF does) matches that behavior;
-        // an earlier version of this method explicitly blanked them out on a wrong hypothesis
-        // that they were the cause of an upstream rejection — they weren't (see cc2018Exchange's
-        // Content-Type fix for the actual cause).
     }
 
     /**

@@ -2,7 +2,6 @@ package com.jilali.auth;
 
 import com.jilali.auth.dto.AuthUserResponse;
 import com.jilali.auth.dto.upstream.LoginResponse;
-import com.jilali.auth.dto.upstream.SignCheckResponse;
 import com.jilali.core.JilaliProperties;
 import com.jilali.roomcontext.application.port.out.UserUpstreamPort;
 import com.jilali.roomcontext.infrastructure.dto.user.UserInfo;
@@ -59,112 +58,9 @@ public final class HelloTalkAuthService {
         return sessions.find(sessionId).map(this::buildAuthUser);
     }
 
-    public void signupPrepare() {
-        // No bind_id available on the frontend's first call. The smali triggers
-        // /v3/reg/prepare from SignProfileV2Activity with user_info.bind_id —
-        // the BFF's signup() path now does the same after /v3/check succeeds.
-        client.regPrepare(null);
-    }
-
-    public void signupSendEmailCode(String email) {
-        client.sendEmailCode(email);
-    }
-
-    public void signupCheckNickname(String nickname) {
-        client.checkNickname(nickname);
-    }
-
-    /**
-     * Runs the terminal {@code /v3/check} signup step and, on success, immediately falls back
-     * into {@link #login} with the same credentials — {@code /v3/check} never returns a JWT
-     * (confirmed from smali, see {@link SignCheckResponse}), so a freshly-created account isn't
-     * actually usable until this second round-trip mints one.
-     *
-     * <p>Before the check, calls {@link HelloTalkAuthClient#regPrepare} to bind the
-     * NetEase Yidun anti-cheat token. The irisk_token from that response is required
-     * on the /v3/reg/* flow (vs. the login flow's behavior_validate). Without it,
-     * upstream returns "code is incorrect, or the account could not be created".
-     * regPrepare is best-effort — if the bind fails, the check proceeds with an
-     * regPrepare is best-effort — see HelloTalkAuthClient.regPrepare docs.
-     *
-     * <p>Per FINDINGS.md §7.2 line 193, the upstream's irisk_token field is "empty for
-     * login (only set on /v3/reg/* flow)". But live test (commit dc46bde's debug log
-     * capture) shows that an empty string still rejects the /v3/check call with a
-     * silent upstream-side no-verify_token. The behavior_validate field on /v3/login
-     * is "checked for presence only, not cryptographic validity" (FINDINGS line 133) —
-     * confirmed live with an arbitrary placeholder. Treating irisk_token the same way:
-     * if regPrepare fails (or upstream doesn't return a token), pass a non-empty
-     * placeholder string so upstream's "absent vs present" check passes. The token
-     * content is never validated — it just has to exist.
-     */
-    public SignupOutcome signup(String email, String password, String emailVerifyCode) {
-        // Per the smali's actual flow (re_output/apktool_out/smali_classes22/j21/b.smali
-        // + h21/e0 + SignProfileV2Activity): /v3/check is called FIRST with empty
-        // irisk_token. If it succeeds the response carries user_info.bind_id, which
-        // the smali then threads into a follow-up /v3/reg/prepare to fetch the
-        // irisk_token for any subsequent calls. This is opposite to the BFF's
-        // previous (wrong) assumption that regPrepare runs first and returns the
-        // bind_id. The previous assumption sent the static device_id as bind_id,
-        // which upstream rejected with status=100 "invalid bind_id" — leaving
-        // the BFF to send a placeholder irisk_token and get "code is incorrect"
-        // back on /v3/check.
-        return switch (client.signupCheck(email, password, emailVerifyCode, "")) {
-            case SignupCheckOutcome.Accepted accepted -> {
-                // /v3/check succeeded — bind to /v3/reg/prepare using the bind_id
-                // the smali extracts from SignCheckResp.user_info.bind_id, then
-                // mint a JWT via the standard email+password login.
-                String bindId = accepted.data().userInfo() != null
-                    ? accepted.data().userInfo().bindId() : null;
-                if (bindId != null && !bindId.isBlank()) {
-                    client.regPrepare(bindId);
-                }
-                yield switch (login(email, password)) {
-                    case LoginOutcome.Authenticated(var session, var user) ->
-                        new SignupOutcome.Created(session, user);
-                    case LoginOutcome.InvalidCredentials loginFail ->
-                        new SignupOutcome.Rejected(0, "Account was created but the follow-up login failed; try logging in manually");
-                };
-            }
-            case SignupCheckOutcome.Rejected(int status, String msg) -> {
-                String reason = mapSignupRejection(status, msg);
-                yield new SignupOutcome.Rejected(status, reason);
-            }
-        };
-    }
-
-    /**
-     * Translates the upstream envelope {@code status} (from the Android client's
-     * {@code h21/e0} smali status code table) to a user-facing message. Falls back to
-     * the raw upstream {@code msg} field if present, otherwise to a generic message.
-     * {@code status == 0} means envelope-level failure (transport / parse) — not an
-     * upstream rejection — and gets a distinct generic message.
-     */
-    private static String mapSignupRejection(int status, String upstreamMsg) {
-        String mapped = switch (status) {
-            case 208 -> "That verification code is incorrect. Please try again.";
-            case 212 -> "Verification failed. Please request a new code.";
-            case 105, 111, 206, 207 -> "Too many attempts. Try again in 24 hours.";
-            case 109 -> "Password format is incorrect.";
-            case 101 -> "That email address is invalid.";
-            case 102 -> "Connection to the third-party login provider failed.";
-            case 100, 551 -> "The server is temporarily unavailable. Please try again shortly.";
-            case 106, 125 -> "Your account has been hidden. Contact support to recover it.";
-            case 107 -> "An account with that email already exists. Try signing in instead.";
-            case 108 -> "Signup failed. Please try again.";
-            case 202 -> "That phone number is already bound to an account.";
-            case 201 -> "That phone number is not valid.";
-            case 204 -> "We could not send the verification code. Please try again.";
-            case 0 -> "Could not reach the signup service. Please check your connection.";
-            default -> upstreamMsg != null && !upstreamMsg.isBlank()
-                ? upstreamMsg
-                : "Signup failed (upstream status " + status + "). Please try again.";
-        };
-        return mapped;
-    }
-
     /**
      * Enriches a session with the profile fields the frontend's {@code AuthUser} needs
-     * (nickname, avatar) via the existing profile-lookup gateway — best-effort: login/signup
+     * (nickname, avatar) via the existing profile-lookup gateway — best-effort: login
      * already succeeded by this point, so a lookup failure degrades to a nameless identity
      * rather than failing the whole request.
      */
