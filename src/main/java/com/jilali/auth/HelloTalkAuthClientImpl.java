@@ -214,13 +214,28 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
 
         var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
         byte[] encrypted = EncbinUtil.encrypt(request, session.sharedSecret());
-        byte[] response = encbinExchange("/user_register_center/v3/check", encrypted, session.headerValue(), "signupCheck")
-            .orElse(null);
-        if (response == null) {
+        Optional<byte[]> responseOpt = encbinExchange(
+            "/user_register_center/v3/check", encrypted, session.headerValue(), "signupCheck");
+        if (responseOpt.isEmpty()) {
+            log.warn("signupCheck: upstream returned no response (likely an envelope-level error "
+                + "or transport failure); iriskToken-supplied={}",
+                iriskToken != null && !iriskToken.isBlank());
             return Optional.empty();
         }
+        byte[] response = responseOpt.get();
         SignCheckResponse parsed = EncbinUtil.decrypt(response, session.sharedSecret(), SignCheckResponse.class);
-        return Optional.ofNullable(parsed).filter(r -> r.verifyToken() != null && !r.verifyToken().isBlank());
+        if (parsed == null || parsed.verifyToken() == null || parsed.verifyToken().isBlank()) {
+            // Upstream didn't return a verify_token — that's the "code is incorrect" or
+            // "account could not be created" path. Surface as much of the response as we
+            // can decode so a future debug session has something to look at. (We can't
+            // easily map every upstream field without a capture, but the response class
+            // carries the standard user_info + verify_token + banned_info shape.)
+            log.warn("signupCheck: upstream accepted the request but did not return a verify_token; "
+                + "iriskToken-supplied={} response={}",
+                iriskToken != null && !iriskToken.isBlank(), parsed);
+            return Optional.empty();
+        }
+        return Optional.of(parsed);
     }
 
     // ---- shared wire plumbing ----
