@@ -81,7 +81,9 @@ The post-step-4 fallthrough into step 5/6 is what the RE calls "the standard ema
 }
 ```
 
-**Response** (captured by us, format inferred from FINDINGS.md §7.3 description):
+**Response cipher**: `ht/encbin` = AES-256-ECB with PKCS7 padding, then optionally gzip (the BFF's `EncbinUtil.encrypt/decrypt` wraps that — see `crypto/EncbinUtil.java`). The BFF's `EncbinUtil.decrypt()` expects to find a JSON envelope inside, but per FINDINGS.md §7.3 the upstream may return a non-JSON ciphertext body. Since the BFF's `signup` flow doesn't actually need the captured `irisk_token` (we send an empty string regardless — confirmed live with FINDINGS.md §7.4), the BFF's `regPrepare` is now best-effort: try the JSON parse, swallow the failure, and return `Optional.empty()`. Live test confirmed the previous "Unexpected character (CTRL-CHAR, code 156)" was a JSON parse attempt on a raw AES-encrypted body — fixed in commit `dc46bde`.
+
+**Response** (best-case, when upstream does include a JSON envelope):
 ```json
 {
   "irisk_token": "HTIRISK_<UUID>"
