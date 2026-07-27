@@ -76,9 +76,18 @@ public final class HelloTalkAuthService {
      * into {@link #login} with the same credentials — {@code /v3/check} never returns a JWT
      * (confirmed from smali, see {@link SignCheckResponse}), so a freshly-created account isn't
      * actually usable until this second round-trip mints one.
+     *
+     * <p>Before the check, calls {@link HelloTalkAuthClient#regPrepare} to bind the
+     * NetEase Yidun anti-cheat token. The irisk_token from that response is required
+     * on the /v3/reg/* flow (vs. the login flow's behavior_validate). Without it,
+     * upstream returns "code is incorrect, or the account could not be created".
+     * regPrepare is best-effort — if the bind fails, the check proceeds with an
+     * empty irisk_token, which the upstream treats as "no token" per the Gson
+     * doesn't-serialize-null-fields behavior.
      */
     public SignupOutcome signup(String email, String password, String emailVerifyCode) {
-        if (client.signupCheck(email, password, emailVerifyCode).isEmpty()) {
+        String iriskToken = client.regPrepare().orElse("");
+        if (client.signupCheck(email, password, emailVerifyCode, iriskToken).isEmpty()) {
             return new SignupOutcome.Rejected(
                 "HelloTalk rejected the signup request (invalid code, email already registered, "
                     + "or an anti-cheat check this BFF cannot satisfy)");

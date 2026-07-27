@@ -23,9 +23,12 @@ public interface HelloTalkAuthClient {
      */
     Optional<LoginResponse> login(String email, String password);
 
-    /** Binds an anti-cheat token for a signup session. Best-effort — see implementation notes;
-     *  never throws, since {@code FINDINGS.md} marks this step optional. */
-    void regPrepare();
+    /** Binds an anti-cheat token for a signup session. Returns the captured irisk_token
+     *  (a {@code HTIRISK_<UUID>} string) on success, or empty Optional on any failure
+     *  (best-effort — see FINDINGS.md). The token must be passed to the subsequent
+     *  {@link #signupCheck} call or upstream returns "code is incorrect" and refuses
+     *  to create the account. */
+    Optional<String> regPrepare();
 
     /** Triggers HelloTalk to email a verification code to {@code email}. */
     void sendEmailCode(String email);
@@ -35,6 +38,8 @@ public interface HelloTalkAuthClient {
 
     /** Terminal signup step. Returns {@link Optional#empty()} on rejection (email taken, bad
      *  code, or an anti-cheat refusal this BFF has no way to satisfy). Never returns a JWT —
-     *  the caller must fall back to {@link #login} to mint one. */
-    Optional<SignCheckResponse> signupCheck(String email, String password, String emailVerifyCode);
+     *  the caller must fall back to {@link #login} to mint one. The {@code iriskToken} is the
+     *  value returned by {@link #regPrepare} (or empty string if the bind failed) and is
+     *  required by the upstream on the /v3/reg/* flow per FINDINGS.md §7.3. */
+    Optional<SignCheckResponse> signupCheck(String email, String password, String emailVerifyCode, String iriskToken);
 }

@@ -35,7 +35,15 @@ public record SignCheckRequest(
     String htntkey,
     String operator,
     @JsonProperty("sim_country_code") String simCountryCode,
-    @JsonProperty("third_party_login") Map<String, PartyValue> thirdPartyLogin
+    @JsonProperty("third_party_login") Map<String, PartyValue> thirdPartyLogin,
+    // Set by the caller from the irisk_token returned by the upstream
+    // /v3/reg/prepare call. Per FINDINGS.md §7.3, this field is required on the
+    // /v3/reg/* flow (vs. the login flow's behavior_validate) — when it's
+    // missing, upstream returns "code is incorrect" and refuses to create the
+    // account. The BFF captures it from regPrepare() and threads it through
+    // here; the call site passes "" if the bind failed (which Gson doesn't
+    // emit, matching the upstream's "absent = no token" semantics).
+    @JsonProperty("irisk_token") String iriskToken
 ) {
     private static final int EMAIL_LOGIN_TYPE = 1;
     private static final int ANDROID_TERMINAL_TYPE = 1;
@@ -47,10 +55,11 @@ public record SignCheckRequest(
 
     public static SignCheckRequest forEmailSignup(String email, String password, String emailVerifyCode,
                                                    String version, String clientLang, String deviceId,
-                                                   long t, String htntkey, String operator, String simCountryCode) {
+                                                   long t, String htntkey, String operator, String simCountryCode,
+                                                   String iriskToken) {
         var partyValue = new PartyValue(email, password, emailVerifyCode);
         return new SignCheckRequest(
             EMAIL_LOGIN_TYPE, email, password, emailVerifyCode, ANDROID_TERMINAL_TYPE, version, clientLang,
-            deviceId, t, htntkey, operator, simCountryCode, Map.of(EMAIL_PASSWORD_PARTY, partyValue));
+            deviceId, t, htntkey, operator, simCountryCode, Map.of(EMAIL_PASSWORD_PARTY, partyValue), iriskToken);
     }
 }

@@ -10,6 +10,7 @@ import com.jilali.auth.dto.upstream.HelloTalkEnvelope;
 import com.jilali.auth.dto.upstream.LoginResponse;
 import com.jilali.auth.dto.upstream.NicknameCheckUpstreamRequest;
 import com.jilali.auth.dto.upstream.RegPrepareRequest;
+import com.jilali.auth.dto.upstream.RegPrepareResponse;
 import com.jilali.auth.dto.upstream.SendEmailCodeUpstreamRequest;
 import com.jilali.auth.dto.upstream.SignCheckRequest;
 import com.jilali.auth.dto.upstream.SignCheckResponse;
@@ -171,12 +172,23 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
     }
 
     @Override
-    public void regPrepare() {
+    public Optional<String> regPrepare() {
         try {
             var request = new RegPrepareRequest(properties.deviceId(), "");
-            encbinPost("/user_register_center/v3/reg/prepare", request);
-        } catch (RuntimeException e) {
+            Optional<byte[]> response = encbinExchange(
+                "/user_register_center/v3/reg/prepare", request, null, "regPrepare");
+            if (response.isEmpty()) return Optional.empty();
+            var parsed = MAPPER.readValue(response.get(), RegPrepareResponse.class);
+            String token = parsed != null ? parsed.iriskToken() : null;
+            if (token == null || token.isBlank()) {
+                log.warn("reg/prepare: response had no irisk_token (upstream may have errored)");
+                return Optional.empty();
+            }
+            log.info("reg/prepare: captured irisk_token ({} chars)", token.length());
+            return Optional.of(token);
+        } catch (Exception e) {
             log.warn("reg/prepare failed (best-effort, continuing signup): {}", e.getMessage());
+            return Optional.empty();
         }
     }
 
@@ -191,14 +203,14 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
     }
 
     @Override
-    public Optional<SignCheckResponse> signupCheck(String email, String password, String emailVerifyCode) {
+    public Optional<SignCheckResponse> signupCheck(String email, String password, String emailVerifyCode, String iriskToken) {
         String deviceId = properties.deviceId();
         long t = System.currentTimeMillis();
         String htntkey = HtntKeyUtil.compute(deviceId, LOGIN_TYPE_EMAIL, t);
         var request = SignCheckRequest.forEmailSignup(
             email, password, emailVerifyCode,
             ApkSignatureGenerator.VERSION_NAME, CLIENT_LANG, deviceId,
-            t, htntkey, NO_SIM_PLACEHOLDER, NO_SIM_PLACEHOLDER);
+            t, htntkey, NO_SIM_PLACEHOLDER, NO_SIM_PLACEHOLDER, iriskToken);
 
         var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
         byte[] encrypted = EncbinUtil.encrypt(request, session.sharedSecret());
@@ -274,6 +286,16 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
         byte[] encrypted = EncbinUtil.encrypt(requestBody, session.sharedSecret());
         encbinExchange(path, encrypted, session.headerValue(), path)
             .orElseThrow(() -> JilaliException.upstreamFailure(path, null));
+    }
+
+    /** Object-overload for encbinExchange: serializes the request, encrypts, calls upstream,
+     *  and returns the raw response bytes (so the caller can deserialize the typed result).
+     *  Returns Optional.empty() on any failure short of a hard transport/decode error
+     *  (the caller is expected to log and degrade gracefully). */
+    private Optional<byte[]> encbinExchange(String path, Object requestBody, String pubHeader, String stage) {
+        var session = Curve25519SessionGenerator.generate(properties.serverPubKeyHex());
+        byte[] encrypted = EncbinUtil.encrypt(requestBody, session.sharedSecret());
+        return encbinExchange(path, encrypted, pubHeader != null ? pubHeader : session.headerValue(), stage);
     }
 
     private Optional<byte[]> encbinExchange(String path, byte[] encryptedBody, String pubHeader, String stage) {
