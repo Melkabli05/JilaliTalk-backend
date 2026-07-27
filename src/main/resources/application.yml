@@ -97,7 +97,14 @@ datasources:
     #   cache_size=-20000   (20MB page cache)
     #   temp_store=MEMORY   (temp tables in RAM)
     # These MUST be per-connection; SQLite doesn't persist them with the DB.
-    url: jdbc:sqlite:${JILALI_DB_PATH:./data/jilalitalk.db}?journal_mode=WAL&synchronous=NORMAL&foreign_keys=on&busy_timeout=5000
+    # Default path is absolute (/home/app/data/...) because the production container's
+    # WORKDIR is /home/app and a relative './data/' doesn't exist there — caused the
+    # first Render deploy to fail with 'path to ./data/jilalitalk.db: /home/app/./data
+    # does not exist'. A startup event listener (DbDirectoryInitializer) creates the
+    # parent dir before the DataSource eager-initializes, so SQLite always has a
+    # writable path on first connection. Override with JILALI_DB_PATH for non-default
+    # locations (tests use file::memory:?cache=shared via a separate test config).
+    url: jdbc:sqlite:${JILALI_DB_PATH:/home/app/data/jilalitalk.db}?journal_mode=WAL&synchronous=NORMAL&foreign_keys=on&busy_timeout=5000
     db-type: sqlite
     pool:
       maximum-pool-size: 10
