@@ -127,6 +127,8 @@ The cooldown shows in the UI's "Resend code" button as a countdown.
 
 **Source**: `apktool_out/smali_classes22/com/hellotalk/sign/service/LoginService.smali:49` (method `a`, the only `/v3/check` call in the auth subsystem).
 
+**Wire `Content-Type` header**: `application/octet-stream` + the `ht-content-type: ht/encbin` marker header. Per `apktool_out/smali/wm/c.smali` (the OkHttp interceptor that dispatches body coding on `ht-content-type`) and the only other working ht/encbin caller in this BFF (`com.jilali.roomcontext.infrastructure.client.UserProfileEncryptedClient.fetchUserInfo` → `POST /profile/v2/userinfo`), every ht/encbin POST sends both headers — see commit `8f7a837` for the prior mistake.
+
 **Request** (`SignCheckReqV3`):
 ```json
 {
