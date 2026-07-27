@@ -1,8 +1,7 @@
 package com.jilali.platform.sql;
 
 import io.micronaut.context.annotation.Value;
-import io.micronaut.context.event.StartupEvent;
-import io.micronaut.runtime.event.annotation.EventListener;
+import jakarta.annotation.PostConstruct;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,14 +14,17 @@ import java.nio.file.Paths;
 /**
  * Creates the SQLite database's parent directory before the DataSource eager-initializes
  * on startup. Solves the production-deploy crash where {@code JILALI_DB_PATH} defaulted
- * to a relative {@code ./data/jilalitalk.db} that didn't exist in the container WORKDIR
- * (Render's WORKDIR is /home/app; relative paths are resolved against it, and there's no
- * data/ subdirectory in the production image).
+ * to a path whose parent didn't exist in the container WORKDIR.
  *
- * <p>Reads the same {@code JILALI_DB_PATH} env var that application.yml uses, parses out the
- * file portion of the {@code jdbc:sqlite:} URL, and ensures the parent dir exists. Runs
- * early — as a @EventListener on StartupEvent, which fires before the eager DataSource
- * bean init since the JdbcAuthSessionRepository is eagerly-initialized.
+ * <p>Runs as a {@code @PostConstruct} (not an {@code @EventListener<StartupEvent>}) so
+ * the dir is created during the singleton's own construction, which is the earliest
+ * Java-level point we control. The DataSource bean is constructed on first use, and
+ * since the JdbcAuthSessionRepository that depends on it is itself a singleton, the
+ * DataSource gets constructed lazily — so our @PostConstruct here runs first.
+ *
+ * <p>The Dockerfile's runtime layer also pre-creates /home/app/data via {@code RUN
+ * mkdir -p}, so the dir exists at JVM start regardless. Both the image build and the
+ * JVM @PostConstruct create the same dir, which is idempotent — only adds robustness.
  *
  * <p>No-op if the file is in-memory (test path like {@code file::memory:?cache=shared})
  * because the parsed path won't have a parent on the local filesystem.
@@ -38,8 +40,8 @@ public class DbDirectoryInitializer {
         this.jdbcUrl = jdbcUrl;
     }
 
-    @EventListener
-    void onStartup(StartupEvent event) {
+    @PostConstruct
+    void onInit() {
         try {
             ensureParentDir(jdbcUrl);
         } catch (IOException e) {
@@ -47,7 +49,7 @@ public class DbDirectoryInitializer {
         }
     }
 
-    /** Visible for tests + the @EventListener above. Parses the file path out of the
+    /** Visible for tests + the @PostConstruct above. Parses the file path out of the
      *  JDBC URL and creates its parent dir. Returns the resolved parent path, or null
      *  for an in-memory / shared-cache test URL that has no local file. */
     static Path ensureParentDir(String jdbcUrl) throws IOException {
@@ -69,7 +71,6 @@ public class DbDirectoryInitializer {
         Path dbFile = Paths.get(tail);
         Path parent = dbFile.getParent();
         if (parent == null) {
-            // dbFile is just a filename (no parent) — write into CWD.
             log.info("DbDirectoryInitializer: bare filename '{}', no parent to create", dbFile);
             return null;
         }
