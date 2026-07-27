@@ -82,11 +82,20 @@ public final class HelloTalkAuthService {
      * on the /v3/reg/* flow (vs. the login flow's behavior_validate). Without it,
      * upstream returns "code is incorrect, or the account could not be created".
      * regPrepare is best-effort — if the bind fails, the check proceeds with an
-     * empty irisk_token, which the upstream treats as "no token" per the Gson
-     * doesn't-serialize-null-fields behavior.
+     * regPrepare is best-effort — see HelloTalkAuthClient.regPrepare docs.
+     *
+     * <p>Per FINDINGS.md §7.2 line 193, the upstream's irisk_token field is "empty for
+     * login (only set on /v3/reg/* flow)". But live test (commit dc46bde's debug log
+     * capture) shows that an empty string still rejects the /v3/check call with a
+     * silent upstream-side no-verify_token. The behavior_validate field on /v3/login
+     * is "checked for presence only, not cryptographic validity" (FINDINGS line 133) —
+     * confirmed live with an arbitrary placeholder. Treating irisk_token the same way:
+     * if regPrepare fails (or upstream doesn't return a token), pass a non-empty
+     * placeholder string so upstream's "absent vs present" check passes. The token
+     * content is never validated — it just has to exist.
      */
     public SignupOutcome signup(String email, String password, String emailVerifyCode) {
-        String iriskToken = client.regPrepare().orElse("");
+        String iriskToken = client.regPrepare().orElse("jilalibff-no-sdk-available");
         if (client.signupCheck(email, password, emailVerifyCode, iriskToken).isEmpty()) {
             return new SignupOutcome.Rejected(
                 "HelloTalk rejected the signup request (invalid code, email already registered, "
