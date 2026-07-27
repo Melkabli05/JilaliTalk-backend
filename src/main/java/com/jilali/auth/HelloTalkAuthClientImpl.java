@@ -175,17 +175,38 @@ public final class HelloTalkAuthClientImpl implements HelloTalkAuthClient {
     public Optional<String> regPrepare() {
         try {
             var request = new RegPrepareRequest(properties.deviceId(), "");
+            // reg/prepare is `ht/encbin` content-type — the response body is the cc2018
+            // ciphertext (XOR-encrypted random bytes), NOT a JSON envelope. We don't
+            // actually need the irisk_token from upstream (the BFF sends an empty one
+            // in the next request anyway — the upstream's `reg/*` flow was confirmed
+            // live with empty tokens per FINDINGS.md §7.4), so we just need to know
+            // the call succeeded. Returning Optional.empty() here means "best-effort,
+            // proceed without a token" — which the HelloTalkAuthService.signup handles
+            // correctly.
             Optional<byte[]> response = encbinExchange(
                 "/user_register_center/v3/reg/prepare", request, null, "regPrepare");
-            if (response.isEmpty()) return Optional.empty();
-            var parsed = MAPPER.readValue(response.get(), RegPrepareResponse.class);
-            String token = parsed != null ? parsed.iriskToken() : null;
-            if (token == null || token.isBlank()) {
-                log.warn("reg/prepare: response had no irisk_token (upstream may have errored)");
+            if (response.isEmpty()) {
+                log.warn("reg/prepare: no response (transport failure)");
                 return Optional.empty();
             }
-            log.info("reg/prepare: captured irisk_token ({} chars)", token.length());
-            return Optional.of(token);
+            // Best-effort: try to parse as JSON in case upstream ever changes the
+            // content-type. The cc2018 form (random bytes) will throw — we catch
+            // and treat as success. Per the JSON branch's docs, the BFF's actual
+            // behavior is "irisk_token is empty regardless of what upstream returns",
+            // so this parser exists for future-proofing only.
+            try {
+                var parsed = MAPPER.readValue(response.get(), RegPrepareResponse.class);
+                String token = parsed != null ? parsed.iriskToken() : null;
+                if (token != null && !token.isBlank()) {
+                    log.info("reg/prepare: captured irisk_token ({} chars)", token.length());
+                    return Optional.of(token);
+                }
+            } catch (Exception parseEx) {
+                log.debug("reg/prepare: response is not JSON (cc2018 ciphertext expected) — treating as success: {}",
+                    parseEx.getMessage());
+            }
+            log.info("reg/prepare: completed (no irisk_token in response — best-effort path)");
+            return Optional.empty();
         } catch (Exception e) {
             log.warn("reg/prepare failed (best-effort, continuing signup): {}", e.getMessage());
             return Optional.empty();
