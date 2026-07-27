@@ -188,6 +188,10 @@ Field set verified by reading `r21/m.smali` iput instructions in `SignCheckResp$
 
 **Note on `password` echo**: the upstream HelloTalk service echoes the plaintext password back in the `user_info.password` field. This is a real security smell at the upstream — never log this field, never store it in BFF state. The BFF's `UserInfo.password` mapping (if any) should explicitly drop it.
 
+**Note on response envelope**: every `/user_register_center/...` response is wrapped in `{"status":0,"msg":"success","data":{...}}` (per FINDINGS.md line 127). The BFF's `HelloTalkAuthClientImpl.cc2018Exchange` (line 280) correctly decodes the envelope first via `HelloTalkEnvelope<T>`, then extracts `data`. An earlier BFF version deserialized the envelope directly into the data-shaped DTO, which silently produced null/zeroed objects (since Jackson's `FAIL_ON_UNKNOWN_PROPERTIES` was disabled, the wrong shape was tolerated without exception) — the cnonce/nonce would have been null, corrupting the password hash and `user_id` for the subsequent login call without any visible error. The current BFF code is correct; the FINDINGS bug is fixed.
+
+**Note on post-success activity**: in the Android client, `/v3/check` success launches `SignProfileV2Activity` (smali `n21/r.smali:14-32`) for the extended-profile flow (nickname, birthday, sex, country, learning languages). The BFF's email-signup pipeline does NOT reach this path — the simple email + password flow is the only one the BFF implements. The `SignUpBean` DTO and the `r21/m` extended-profile form-validation logic (lines 480-988) are out of scope for the BFF's `EmailLoginRequest`/`SignCheckRequest` types.
+
 ### 3.5 `POST /user_register_center/v3/pre_login` — reuses `Ls21/c;` (login DTO, not signup)
 
 **Source**: `apktool_out/smali_classes22/com/hellotalk/sign/service/LoginService.smali` — pre_login is shared between login and signup.
