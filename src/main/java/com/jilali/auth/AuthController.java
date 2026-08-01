@@ -59,7 +59,12 @@ public class AuthController {
     @Post("/logout")
     public HttpResponse<Void> logout(HttpRequest<?> request) {
         sessionId(request).ifPresent(authService::logout);
-        return HttpResponse.<Void>noContent().cookie(Cookie.of(SESSION_COOKIE, "").path("/").maxAge(0));
+        return HttpResponse.<Void>noContent().cookie(Cookie.of(SESSION_COOKIE, "")
+            .httpOnly(true)
+            .secure(true)
+            .sameSite(io.micronaut.http.cookie.SameSite.None)
+            .path("/")
+            .maxAge(0));
     }
 
     @Get("/me")
@@ -76,13 +81,21 @@ public class AuthController {
     }
 
     /**
-     * Deliberately omits {@code secure(true)} — local dev runs over plain HTTP. Turn it on (and
-     * set {@code SameSite=None} if frontend/backend ever live on different real domains) before
-     * this runs anywhere but localhost.
+     * {@code secure(true)} + {@code SameSite=None} are required now that the frontend
+     * (vercel.app) and this backend (onrender.com) live on different real domains — the
+     * browser silently drops a {@code SameSite=Lax} (the default) cookie on cross-site
+     * fetch/XHR calls, which was causing every post-login request to fall back to the
+     * shared {@code jilali.default-auth-token} service account instead of the real
+     * per-user session (visible as {@code token-source=default} in
+     * {@code DefaultHeadersClientFilter} logs). {@code Secure} cookies still work on
+     * {@code http://localhost} because browsers treat localhost as a secure context, so
+     * this doesn't break local dev.
      */
     private MutableHttpResponse<?> withSessionCookie(MutableHttpResponse<?> response, String sessionId) {
         return response.cookie(Cookie.of(SESSION_COOKIE, sessionId)
             .httpOnly(true)
+            .secure(true)
+            .sameSite(io.micronaut.http.cookie.SameSite.None)
             .path("/")
             .maxAge(SESSION_MAX_AGE));
     }

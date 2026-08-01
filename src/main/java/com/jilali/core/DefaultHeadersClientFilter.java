@@ -168,8 +168,22 @@ public class DefaultHeadersClientFilter implements Ordered {
         );
     }
 
+    /**
+     * {@code Integer.MIN_VALUE}, not {@code MAX_VALUE}: for {@code @RequestFilter} client
+     * filters, Micronaut runs the {@code jlhub}-scoped filter chain in <em>descending</em>
+     * {@code getOrder()} — the opposite of the usual "lower runs first" convention — so the
+     * lowest possible value is what actually makes this filter run last, after {@link
+     * com.jilali.auth.SessionAuthClientFilter} (order {@code 100}) has had a chance to resolve
+     * the per-user JWT from the session cookie. The previous {@code Integer.MAX_VALUE} here
+     * made this filter run FIRST on every request, which meant {@link #deriveCallerUid} always
+     * won the "set authorization if missing" race against the session filter — every upstream
+     * call silently used the shared {@code jilali.default-auth-token} service account instead
+     * of the real logged-in user's JWT, 100% of the time, regardless of login. Confirmed live:
+     * flipping this value is what makes {@code SessionAuthClientFilter}'s
+     * {@code "authorization"} header actually survive to the outbound request.
+     */
     @Override
     public int getOrder() {
-        return Integer.MAX_VALUE; // run after HeaderPropagationFilter
+        return Integer.MIN_VALUE;
     }
 }
