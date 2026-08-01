@@ -2,6 +2,7 @@ package com.jilali.auth;
 
 import com.jilali.auth.dto.AuthUserResponse;
 import com.jilali.auth.dto.upstream.LoginResponse;
+import com.jilali.core.AuthTokenHolder;
 import com.jilali.core.JilaliProperties;
 import com.jilali.roomcontext.application.port.out.UserUpstreamPort;
 import com.jilali.roomcontext.infrastructure.dto.user.UserInfo;
@@ -9,6 +10,7 @@ import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.sql.DataSource;
 import java.util.Optional;
 
 /**
@@ -28,21 +30,41 @@ public final class HelloTalkAuthService {
     private final AuthSessionRepository sessions;
     private final JilaliProperties properties;
     private final UserUpstreamPort userUpstream;
+    private final AuthTokenHolder authTokenHolder;
+    private final DataSource dataSource;
 
     public HelloTalkAuthService(HelloTalkAuthClient client, AuthSessionRepository sessions,
-                                 JilaliProperties properties, UserUpstreamPort userUpstream) {
+                                 JilaliProperties properties, UserUpstreamPort userUpstream,
+                                 AuthTokenHolder authTokenHolder, DataSource dataSource) {
         this.client = client;
         this.sessions = sessions;
         this.properties = properties;
         this.userUpstream = userUpstream;
+        this.authTokenHolder = authTokenHolder;
+        this.dataSource = dataSource;
     }
 
-    /** Verifies real HelloTalk credentials and, on success, opens a local session for them. */
+    /**
+     * Verifies real HelloTalk credentials and, on success, opens a local session for them.
+     * <p>
+     * Also republishes the freshly-minted JWT into {@link AuthTokenHolder} — the same
+     * shared fallback token {@link com.jilali.core.DefaultHeadersClientFilter} uses for any
+     * upstream call that has no session (anonymous browsing, background jobs). Without
+     * {@code jilali.hellotalk-email}/{@code hellotalk-password} configured, {@link
+     * com.jilali.platform.reconnect.ImReloginRunner} never runs, so that shared token would
+     * otherwise just sit dead until someone hand-rotates {@code LIVEHUB_AUTH_TOKEN}. Every
+     * real login is a free, already-authenticated JWT for the same account this BFF was
+     * seeded with — piggybacking off it keeps the fallback token self-healing with zero
+     * extra upstream calls. Persisted to {@code service_token} (best-effort, same as {@link
+     * AuthTokenHolder#persistIfHolder}) so a restart doesn't lose it either.
+     */
     public LoginOutcome login(String email, String password) {
         return client.login(email, password)
             .map(LoginResponse::userInfo)
             .<LoginOutcome>map(userInfo -> {
                 var session = sessions.create(userInfo.userId(), email, userInfo.jwt(), properties.deviceId());
+                authTokenHolder.set(userInfo.jwt());
+                authTokenHolder.persistIfHolder(dataSource);
                 return new LoginOutcome.Authenticated(session, buildAuthUser(session));
             })
             .orElseGet(LoginOutcome.InvalidCredentials::new);
